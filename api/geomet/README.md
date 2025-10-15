@@ -66,8 +66,8 @@ async fn main() -> Result<(), anyhow::Error> {
 # Fetch WCS data
 ./geomet wcs RDPS_10km_Precip-Accum24h 2025-10-13T12:00:00Z -130 -60 20 60
 
-# Fetch point data
-./geomet point RDPS_10km_AirTemp_2m 2025-10-13T12:00:00Z -75.7 45.4
+# Fetch legend graphic
+./geomet legend RDPS_10km_AirTemp_2m TEMPERATURE-LINEAR image/png en
 ```
 
 ## Parameters

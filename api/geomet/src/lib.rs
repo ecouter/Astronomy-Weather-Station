@@ -87,6 +87,24 @@ impl GeoMetAPI {
         self.parse_wcs_capabilities(&text)
     }
 
+    /// Get raw WMS capabilities XML
+    pub async fn get_wms_capabilities_raw(&self) -> Result<String> {
+        let url = format!("{}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetCapabilities", self.base_url);
+
+        let response = self.client.get(&url).send().await?;
+        let text = response.text().await?;
+        Ok(text)
+    }
+
+    /// Get raw WCS capabilities XML
+    pub async fn get_wcs_capabilities_raw(&self) -> Result<String> {
+        let url = format!("{}?SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCapabilities", self.base_url);
+
+        let response = self.client.get(&url).send().await?;
+        let text = response.text().await?;
+        Ok(text)
+    }
+
     /// Fetch WMS image
     /// Note: For WMS 1.3.0 with EPSG:4326, BBOX order is minY,minX,maxY,maxX (lat,lon,lat,lon)
     pub async fn get_wms_image(
@@ -126,7 +144,7 @@ impl GeoMetAPI {
         Ok(bytes.to_vec())
     }
 
-    /// Fetch WCS data
+    /// Fetch WCS data with full 2.0.1 specification support
     pub async fn get_wcs_data(
         &self,
         coverage_id: &str,
@@ -134,24 +152,111 @@ impl GeoMetAPI {
         bbox: BoundingBox,
         format: &str,
     ) -> Result<Vec<u8>> {
-        let x_subset = format!("x({}, {})", bbox.min_lon, bbox.max_lon);
-        let y_subset = format!("y({}, {})", bbox.min_lat, bbox.max_lat);
+        self.get_wcs_data_advanced(
+            coverage_id,
+            time,
+            bbox,
+            format,
+            None, // subsetting_crs
+            None, // output_crs
+            None, // resolution_x
+            None, // resolution_y
+            None, // size_x
+            None, // size_y
+            None, // interpolation
+            None, // range_subset
+        ).await
+    }
+
+    /// Fetch WCS data with advanced options (full WCS 2.0.1 compliance)
+    pub async fn get_wcs_data_advanced(
+        &self,
+        coverage_id: &str,
+        time: &str,
+        bbox: BoundingBox,
+        format: &str,
+        subsetting_crs: Option<&str>,
+        output_crs: Option<&str>,
+        resolution_x: Option<f64>,
+        resolution_y: Option<f64>,
+        size_x: Option<u32>,
+        size_y: Option<u32>,
+        interpolation: Option<&str>,
+        range_subset: Option<&str>,
+    ) -> Result<Vec<u8>> {
+        let x_subset = format!("x({:.6}, {:.6})", bbox.min_lon, bbox.max_lon);
+        let y_subset = format!("y({:.6}, {:.6})", bbox.min_lat, bbox.max_lat);
 
         let mut params = HashMap::new();
         params.insert("SERVICE", "WCS");
         params.insert("VERSION", "2.0.1");
         params.insert("REQUEST", "GetCoverage");
         params.insert("COVERAGEID", coverage_id);
-        params.insert("SUBSETTINGCRS", "EPSG:4326");
+
+        // SUBSETTINGCRS (optional, defaults to EPSG:4326)
+        if let Some(crs) = subsetting_crs {
+            params.insert("SUBSETTINGCRS", crs);
+        } else {
+            params.insert("SUBSETTINGCRS", "EPSG:4326");
+        }
+
+        // OUTPUTCRS (optional, strongly recommended)
+        if let Some(crs) = output_crs {
+            params.insert("OUTPUTCRS", crs);
+        }
+
+        // SUBSET parameters
         params.insert("SUBSET", &x_subset);
         params.insert("SUBSET", &y_subset);
-        params.insert("FORMAT", format);
+
+        // RESOLUTION or SIZE (mutually exclusive per axis)
+        let mut resolution_params = Vec::new();
+        let mut size_params = Vec::new();
+
+        if let Some(res_x) = resolution_x {
+            resolution_params.push(format!("x({:.6})", res_x));
+        }
+        if let Some(res_y) = resolution_y {
+            resolution_params.push(format!("y({:.6})", res_y));
+        }
+        if let Some(sx) = size_x {
+            size_params.push(format!("x({})", sx));
+        }
+        if let Some(sy) = size_y {
+            size_params.push(format!("y({})", sy));
+        }
+
+        // Add resolution parameters
+        for res_param in &resolution_params {
+            params.insert("RESOLUTION", res_param);
+        }
+
+        // Add size parameters
+        for size_param in &size_params {
+            params.insert("SIZE", size_param);
+        }
+
+        // INTERPOLATION (optional, default NEAREST)
+        if let Some(interp) = interpolation {
+            params.insert("INTERPOLATION", interp);
+        }
+
+        // RANGESUBSET (optional)
+        if let Some(range) = range_subset {
+            params.insert("RANGESUBSET", range);
+        }
+
+        // TIME
         params.insert("TIME", time);
+
+        // FORMAT
+        params.insert("FORMAT", format);
 
         let response = self.client.get(&self.base_url).query(&params).send().await?;
 
         if !response.status().is_success() {
-            return Err(anyhow!("WCS request failed: {}", response.status()));
+            return Err(anyhow!("WCS request failed: {} - URL: {}", response.status(),
+                format!("{}?{}", self.base_url, serde_urlencoded::to_string(&params).unwrap_or_default())));
         }
 
         let bytes = response.bytes().await?;
@@ -185,6 +290,42 @@ impl GeoMetAPI {
 
         if !response.status().is_success() {
             return Err(anyhow!("WCS point request failed: {}", response.status()));
+        }
+
+        let bytes = response.bytes().await?;
+        Ok(bytes.to_vec())
+    }
+
+    /// Fetch WMS legend graphic
+    /// Note: For WMS 1.3.0, GetLegendGraphic uses STYLE (singular) not STYLES (plural)
+    pub async fn get_legend_graphic(
+        &self,
+        layer: &str,
+        style: Option<&str>,
+        format: &str,
+        language: Option<&str>,
+    ) -> Result<Vec<u8>> {
+        let mut params = HashMap::new();
+        params.insert("SERVICE", "WMS");
+        params.insert("VERSION", "1.3.0");
+        params.insert("REQUEST", "GetLegendGraphic");
+        params.insert("LAYER", layer);
+        params.insert("FORMAT", format);
+        params.insert("SLD_VERSION", "1.1.0");
+
+        // Optional parameters
+        if let Some(style_name) = style {
+            params.insert("STYLE", style_name);
+        }
+        if let Some(lang) = language {
+            params.insert("LANG", lang);
+        }
+
+        let response = self.client.get(&self.base_url).query(&params).send().await?;
+
+        if !response.status().is_success() {
+            return Err(anyhow!("WMS GetLegendGraphic request failed: {} - URL: {}", response.status(),
+                format!("{}?{}", self.base_url, serde_urlencoded::to_string(&params).unwrap_or_default())));
         }
 
         let bytes = response.bytes().await?;
