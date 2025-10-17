@@ -2,8 +2,8 @@ import { Button, VerticalBox, HorizontalBox } from "std-widgets.slint";
 
 export component MainWindow inherits Window {
     title: "Weather Station Frontend";
-    width: 1200px;
-    height: 800px;
+    width: 1280px;
+    height: 720px;
     preferred-width: 1200px;
     preferred-height: 800px;
 
@@ -14,33 +14,85 @@ export component MainWindow inherits Window {
     in property <image> bottom_left_image;
     in property <image> bottom_right_image;
     in property <image> legend_image;
+    in property <image> cloud_cover_image;
+    in property <string> cloud_cover_counter;
 
     HorizontalBox {
-        // Left side: 4 vertical windows (1/3 width)
-        Rectangle {
+        // Left side: Cloud cover prediction (top portion, 1/3 width)
+        padding-left: 35px;
+        VerticalBox {
             width: 400px; // 1/3 of 1200
-            height: 100%;
 
-            VerticalBox {
-                // Top window (blank)
-                Rectangle {
-                    height: 25%;
+            // Title
+            Text {
+                text: "RAW HRDPS cloud cover prediction";
+                color: #ffffff;
+                font-size: 16px;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: top;
+                height: 25px;
+            }
+
+            // Cloud cover section (top 60% of left side)
+            Rectangle {
+                height: 225px; // 60% of left side height
+
+                if (loading) : Text {
+                    text: "Loading cloud cover...";
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    y: 25px;
                 }
 
-                // Second window (blank)
-                Rectangle {
-                    height: 25%;
+                if (!loading && error_message == "") : Rectangle {
+                    width: 100%;
+                    height: 100%;
+
+                    // Cloud cover image
+                    Image {
+                        source: cloud_cover_image;
+                        width: 100%;
+                        height: 100%;
+                        image-fit: fill;
+                    }
+
+                    // Red dot at center (coordinate location)
+                    Rectangle {
+                        width: 4px;
+                        height: 4px;
+                        background: #ff0000;
+                        border-radius: 4px;
+                        x: (parent.width - 4px) / 2;
+                        y: (parent.height - 4px) / 2;
+                    }
+
+                    // Counter overlay
+                    Text {
+                        text: cloud_cover_counter;
+                        color: #0066cc;
+                        font-size: 24px;
+                        font-weight: 700;
+                        horizontal-alignment: left;
+                        vertical-alignment: top;
+                        x: 10px;
+                        y: 10px;
+                    }
                 }
 
-                // Third window (blank)
-                Rectangle {
-                    height: 25%;
+                if (!loading && error_message != "") : Text {
+                    text: error_message;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    color: #ff0000;
+                    y: 25px;
                 }
+            }
 
-                // Bottom window (blank)
-                Rectangle {
-                    height: 25%;
-                }
+            // Bottom portion (40% of left side) - available for future use
+            Rectangle {
+                height: 40%;
+                // Empty for now - can be used for other features later
             }
         }
 
@@ -73,6 +125,16 @@ export component MainWindow inherits Window {
                             image-fit: fill;
                         }
 
+                        // Red dot at center (coordinate location)
+                        Rectangle {
+                            width: 4px;
+                            height: 4px;
+                            background: #ff0000;
+                            border-radius: 4px;
+                            x: (parent.width - 4px) / 2;
+                            y: (parent.height - 4px) / 2;
+                        }
+
                         if (!loading && error_message != "") : Text {
                             text: error_message;
                             horizontal-alignment: center;
@@ -96,6 +158,16 @@ export component MainWindow inherits Window {
                             width: 100%;
                             height: 100%;
                             image-fit: fill;
+                        }
+
+                        // Red dot at center (coordinate location)
+                        Rectangle {
+                            width: 4px;
+                            height: 4px;
+                            background: #ff0000;
+                            border-radius: 4px;
+                            x: (parent.width - 4px) / 2;
+                            y: (parent.height - 4px) / 2;
                         }
 
                         if (!loading && error_message != "") : Text {
@@ -126,6 +198,16 @@ export component MainWindow inherits Window {
                             width: 100%;
                             height: 100%;
                             image-fit: fill;
+                        }
+
+                        // Red dot at center (coordinate location)
+                        Rectangle {
+                            width: 4px;
+                            height: 4px;
+                            background: #ff0000;
+                            border-radius: 4px;
+                            x: (parent.width - 4px) / 2;
+                            y: (parent.height - 4px) / 2;
                         }
 
                         if (!loading && error_message != "") : Text {
@@ -163,9 +245,19 @@ export component MainWindow inherits Window {
                                 source: legend_image;
                                 width: 100%;
                                 height: 100%;
-                                x: parent.width * 0.4;
+                                x: parent.width * 0.42;
                                 y: parent.height * 0;
                                 image-fit: contain;
+                            }
+
+                            // Red dot at center (coordinate location)
+                            Rectangle {
+                                width: 4px;
+                                height: 4px;
+                                background: #ff0000;
+                                border-radius: 4px;
+                                x: (parent.width - 4px) / 2;
+                                y: (parent.height - 4px) / 2;
                             }
                         }
 

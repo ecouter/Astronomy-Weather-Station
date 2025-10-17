@@ -3,6 +3,9 @@ slint::include_modules!();
 use std::time::Duration;
 use std::thread;
 use std::sync::mpsc;
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
+use chrono::Timelike;
 
 fn main() -> Result<(), slint::PlatformError> {
     println!("Starting weather station frontend...");
@@ -18,14 +21,20 @@ fn main() -> Result<(), slint::PlatformError> {
             eprintln!("Failed to load initial images: {}", e);
             main_window.set_error_message(format!("Failed to load images: {}", e).into());
         }
+        if let Err(e) = update_cloud_cover_images(&main_window).await {
+            eprintln!("Failed to load initial cloud cover images: {}", e);
+            main_window.set_error_message(format!("Failed to load cloud cover images: {}", e).into());
+        }
     });
 
     main_window.set_loading(false);
 
     // Channel for communication between background thread and UI thread
     let (tx, rx) = mpsc::channel();
+    // Channel for cloud cover cycling
+    let (cloud_tx, cloud_rx) = mpsc::channel();
 
-    // Spawn background thread for periodic updates
+    // Spawn background thread for periodic weather updates
     thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
@@ -41,12 +50,95 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    // Handle updates in the UI thread
+    // Spawn background thread for cloud cover updates (hourly)
+    let cloud_tx_clone = cloud_tx.clone();
+    thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let mut interval = tokio::time::interval(Duration::from_secs(3600)); // 1 hour
+            loop {
+                interval.tick().await;
+                // Signal the UI thread to update cloud cover images
+                if cloud_tx_clone.send("update").is_err() {
+                    // UI thread has shut down
+                    break;
+                }
+            }
+        });
+    });
+
+    // Spawn background thread for cloud cover cycling (every 2 seconds)
+    thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        println!("Cloud cover cycling thread started");
+        rt.block_on(async {
+            let mut interval = tokio::time::interval(Duration::from_secs(2)); // 2 seconds
+            loop {
+                interval.tick().await;
+                println!("Sending cycle signal");
+                // Signal the UI thread to cycle cloud cover display
+                if cloud_tx.send("cycle").is_err() {
+                    println!("Failed to send cycle signal, UI thread may have shut down");
+                    // UI thread has shut down
+                    break;
+                }
+            }
+        });
+        println!("Cloud cover cycling thread ended");
+    });
+
+    // Handle cloud cover updates directly in the main thread using invoke_from_event_loop
     let main_window_weak = main_window.as_weak();
-    let _update_handle = thread::spawn(move || {
+    let _cloud_update_handle = thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        println!("Cloud cover update thread started");
+        while let Ok(signal) = cloud_rx.recv() {
+            println!("Received cloud signal: {}", signal);
+            let window_weak = main_window_weak.clone();
+            match signal {
+                "update" => {
+                    println!("Processing cloud update signal");
+                    // Use invoke_from_event_loop to run async code in the UI thread
+                    slint::invoke_from_event_loop(move || {
+                        let rt = tokio::runtime::Runtime::new().unwrap();
+                        let window = window_weak.upgrade();
+                        if let Some(window) = window {
+                            rt.block_on(async {
+                                if let Err(e) = update_cloud_cover_images(&window).await {
+                                    eprintln!("Failed to update cloud cover images: {}", e);
+                                    window.set_error_message(format!("Failed to update cloud cover images: {}", e).into());
+                                }
+                            });
+                        }
+                    }).unwrap();
+                }
+                "cycle" => {
+                    println!("Processing cloud cycle signal");
+                    // Use invoke_from_event_loop to update UI in the UI thread
+                    slint::invoke_from_event_loop(move || {
+                        let window = window_weak.upgrade();
+                        if let Some(window) = window {
+                            update_cloud_cover_display(&window);
+                        }
+                    }).unwrap();
+                }
+                _ => {
+                    println!("Unknown cloud signal: {}", signal);
+                }
+            }
+        }
+        println!("Cloud cover update thread ended");
+    });
+
+    // Keep the main window alive by storing it
+    let _main_window_handle = main_window.as_weak();
+
+    // Handle weather updates in the UI thread
+    let main_window_weak2 = main_window.as_weak();
+    let _weather_update_handle = thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
         while let Ok(()) = rx.recv() {
-            let main_window = main_window_weak.upgrade();
+            let main_window = main_window_weak2.upgrade();
             if let Some(window) = main_window {
                 rt.block_on(async {
                     if let Err(e) = update_weather_images(&window).await {
@@ -62,7 +154,12 @@ fn main() -> Result<(), slint::PlatformError> {
     });
 
     println!("Weather station frontend started successfully");
-    main_window.run()
+
+    // Run the main window - this blocks until the window is closed
+    let result = main_window.run();
+
+    println!("Main window closed, shutting down threads...");
+    result
 }
 
 fn decode_png_to_slint_image(png_data: &[u8]) -> Result<slint::Image, Box<dyn std::error::Error>> {
@@ -130,6 +227,8 @@ async fn update_weather_images(main_window: &MainWindow) -> Result<(), Box<dyn s
     use geomet::{GeoMetAPI, BoundingBox};
     use chrono::{Utc, Duration, Timelike};
     use slint::Image;
+    use std::sync::Mutex;
+    use once_cell::sync::Lazy;
 
     println!("Updating weather images...");
 
@@ -154,7 +253,7 @@ async fn update_weather_images(main_window: &MainWindow) -> Result<(), Box<dyn s
     let hrdps_time_str = hrdps_time.format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     // Bounding box: ~5° radius around coordinates
-    let bbox = BoundingBox::new(lon - 5.0, lon + 5.0, lat - 5.0, lat + 5.0);
+    let bbox = BoundingBox::new(lon - 8.9, lon + 8.9, lat - 5.0, lat + 5.0);
 
     // Image dimensions for 16:9 ratio
     let width = 320;
@@ -193,4 +292,98 @@ async fn update_weather_images(main_window: &MainWindow) -> Result<(), Box<dyn s
 
     println!("Weather images updated successfully");
     Ok(())
+}
+
+// Global storage for cloud cover images and current index
+static CLOUD_COVER_IMAGES: Lazy<Mutex<Vec<Vec<u8>>>> = Lazy::new(|| Mutex::new(Vec::new()));
+static CLOUD_COVER_INDEX: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::new(0));
+
+async fn update_cloud_cover_images(main_window: &MainWindow) -> Result<(), Box<dyn std::error::Error>> {
+    use geomet::{GeoMetAPI, BoundingBox};
+    use chrono::{Utc, Duration};
+
+    println!("Updating cloud cover images...");
+
+    // Load coordinates
+    let coords_content = std::fs::read_to_string("../coordinates.json")?;
+    let coords: serde_json::Value = serde_json::from_str(&coords_content)?;
+    let lat: f64 = coords["lat"].as_str().unwrap().parse()?;
+    let lon: f64 = coords["lon"].as_str().unwrap().parse()?;
+
+    // Calculate current UTC time, round to next hour for forecast
+    let now = Utc::now();
+    let current_hour = now.with_minute(0).unwrap().with_second(0).unwrap().with_nanosecond(0).unwrap();
+
+    // Bounding box: ~5° radius around coordinates
+    let bbox = BoundingBox::new(lon - 8.9, lon + 8.9, lat - 5.0, lat + 5.0);
+
+    // Image dimensions for cloud cover (16:9 ratio for left section)
+    let width = 400;
+    let height = 225; // 400 * 9/16 = 225
+
+    let api = GeoMetAPI::new()?;
+
+    // Fetch 24 hours of HRDPS.CONTINENTAL_NT images (next 24 hours after current)
+    let mut cloud_images = Vec::new();
+
+    for hour_offset in 1..=24 {
+        let forecast_time = current_hour + Duration::hours(hour_offset);
+        let time_str = forecast_time.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+        match api.get_wms_image("HRDPS.CONTINENTAL_NT", &time_str, bbox.clone(), width, height).await {
+            Ok(data) => {
+                cloud_images.push(data);
+            }
+            Err(e) => {
+                eprintln!("Failed to fetch image for hour +{}: {}", hour_offset, e);
+            }
+        }
+    }
+
+    // Update global storage
+    {
+        let mut images = CLOUD_COVER_IMAGES.lock().unwrap();
+        *images = cloud_images;
+    }
+
+    // Reset index to 0
+    {
+        let mut index = CLOUD_COVER_INDEX.lock().unwrap();
+        *index = 0;
+    }
+
+    // Update UI with first image
+    update_cloud_cover_display(main_window);
+
+    println!("Cloud cover images updated successfully ({} images)", CLOUD_COVER_IMAGES.lock().unwrap().len());
+    Ok(())
+}
+
+fn update_cloud_cover_display(main_window: &MainWindow) {
+    let images = CLOUD_COVER_IMAGES.lock().unwrap();
+    let mut index = CLOUD_COVER_INDEX.lock().unwrap();
+
+    if !images.is_empty() {
+        let current_image_data = &images[*index];
+        let counter_text = format!("+{}h", *index + 1);
+
+        println!("Displaying cloud cover image: {} (index: {})", counter_text, *index);
+
+        // Decode the PNG data to Slint image
+        match decode_png_to_slint_image(current_image_data) {
+            Ok(slint_image) => {
+                main_window.set_cloud_cover_image(slint_image);
+                main_window.set_cloud_cover_counter(counter_text.into());
+            }
+            Err(e) => {
+                eprintln!("Failed to decode cloud cover image: {}", e);
+            }
+        }
+
+        // Cycle to next image
+        *index = (*index + 1) % images.len();
+        println!("Next index will be: {}", *index);
+    } else {
+        println!("No cloud cover images available for display");
+    }
 }
