@@ -323,22 +323,38 @@ async fn update_cloud_cover_images(main_window: &MainWindow) -> Result<(), Box<d
 
     let api = GeoMetAPI::new()?;
 
-    // Fetch 24 hours of HRDPS.CONTINENTAL_NT images (next 24 hours after current)
-    let mut cloud_images = Vec::new();
+    // Fetch 24 hours of HRDPS.CONTINENTAL_NT images concurrently using multiple threads
+    let mut tasks = Vec::new();
 
     for hour_offset in 1..=24 {
         let forecast_time = current_hour + Duration::hours(hour_offset);
         let time_str = forecast_time.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let bbox_clone = bbox.clone();
 
-        match api.get_wms_image("HRDPS.CONTINENTAL_NT", &time_str, bbox.clone(), width, height).await {
-            Ok(data) => {
-                cloud_images.push(data);
+        // Spawn a task for each hour (create new API instance per task)
+        let task = tokio::spawn(async move {
+            let api_instance = GeoMetAPI::new().unwrap();
+            match api_instance.get_wms_image("HRDPS.CONTINENTAL_NT", &time_str, bbox_clone, width, height).await {
+                Ok(data) => Some((hour_offset, data)),
+                Err(e) => {
+                    eprintln!("Failed to fetch image for hour +{}: {}", hour_offset, e);
+                    None
+                }
             }
-            Err(e) => {
-                eprintln!("Failed to fetch image for hour +{}: {}", hour_offset, e);
-            }
+        });
+        tasks.push(task);
+    }
+
+    // Wait for all tasks to complete and collect results
+    let mut cloud_images = vec![Vec::new(); 25]; // Index 0 unused, 1-24 for hours
+    for task in tasks {
+        if let Ok(Some((hour_offset, data))) = task.await {
+            cloud_images[hour_offset as usize] = data;
         }
     }
+
+    // Remove empty entries and keep only successful fetches
+    let cloud_images: Vec<Vec<u8>> = cloud_images.into_iter().filter(|img| !img.is_empty()).collect();
 
     // Update global storage
     {
