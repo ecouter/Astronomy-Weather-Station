@@ -113,8 +113,41 @@ async fn main() -> Result<(), anyhow::Error> {
                     let xml_content = api.get_wcs_capabilities_raw().await?;
 
                     if let Some(filename) = output_file {
-                        std::fs::write(filename, &xml_content)?;
-                        println!("WCS capabilities saved to: {}", filename);
+                        // Extract only CoverageId and CoverageSubtype
+                        let mut filtered_content = String::new();
+
+                        for line in xml_content.lines() {
+                            let trimmed = line.trim();
+
+                            // Extract CoverageId
+                            if trimmed.contains("<wcs:CoverageId>") && trimmed.contains("</wcs:CoverageId>") {
+                                if let Some(start) = trimmed.find("<wcs:CoverageId>") {
+                                    if let Some(end) = trimmed.find("</wcs:CoverageId>") {
+                                        let coverage_id = trimmed[start + 16..end].trim();
+                                        if !coverage_id.is_empty() {
+                                            filtered_content.push_str(&coverage_id);
+                                            filtered_content.push('\n');
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Extract CoverageSubtype
+                            /*if trimmed.contains("<wcs:CoverageSubtype>") && trimmed.contains("</wcs:CoverageSubtype>") {
+                                if let Some(start) = trimmed.find("<wcs:CoverageSubtype>") {
+                                    if let Some(end) = trimmed.find("</wcs:CoverageSubtype>") {
+                                        let coverage_subtype = trimmed[start + 21..end].trim();
+                                        if !coverage_subtype.is_empty() {
+                                            filtered_content.push_str(&coverage_subtype);
+                                            filtered_content.push('\n');
+                                        }
+                                    }
+                                }
+                            }*/
+                        }
+
+                        std::fs::write(filename, filtered_content)?;
+                        println!("Filtered WCS capabilities saved to: {}", filename);
                     } else {
                         // Extract all coverage IDs (not just RDPS)
                         let mut all_coverages = Vec::new();
