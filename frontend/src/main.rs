@@ -145,20 +145,21 @@ fn main() -> Result<(), slint::PlatformError> {
     // Handle weather updates in the UI thread
     let main_window_weak2 = main_window.as_weak();
     let _weather_update_handle = thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
         while let Ok(()) = rx.recv() {
-            let main_window = main_window_weak2.upgrade();
-            if let Some(window) = main_window {
-                rt.block_on(async {
-                    if let Err(e) = update_weather_images(&window).await {
-                        eprintln!("Failed to update images: {}", e);
-                        window.set_error_message(format!("Failed to update images: {}", e).into());
-                    }
-                });
-            } else {
-                // Window has been destroyed
-                break;
-            }
+            let window_weak = main_window_weak2.clone();
+            // Use invoke_from_event_loop to run async code in the UI thread
+            slint::invoke_from_event_loop(move || {
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                let window = window_weak.upgrade();
+                if let Some(window) = window {
+                    rt.block_on(async {
+                        if let Err(e) = update_weather_images(&window).await {
+                            eprintln!("Failed to update images: {}", e);
+                            window.set_error_message(format!("Failed to update images: {}", e).into());
+                        }
+                    });
+                }
+            }).unwrap();
         }
     });
 
