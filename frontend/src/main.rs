@@ -34,6 +34,15 @@ fn main() -> Result<(), slint::PlatformError> {
                 main_window.set_error_message(format!("Failed to load map image: {}", e).into());
             }
         }
+        match load_cleardarksky_image().await {
+            Ok(cleardarksky_image) => {
+                main_window.set_cleardarksky_image(cleardarksky_image);
+            }
+            Err(e) => {
+                eprintln!("Failed to load ClearDarkSky image: {}", e);
+                main_window.set_error_message(format!("Failed to load ClearDarkSky image: {}", e).into());
+            }
+        }
     });
 
     main_window.set_loading(false);
@@ -117,6 +126,17 @@ fn main() -> Result<(), slint::PlatformError> {
                                     eprintln!("Failed to update cloud cover images: {}", e);
                                     window.set_error_message(format!("Failed to update cloud cover images: {}", e).into());
                                 }
+                                // Also update ClearDarkSky chart
+                                match load_cleardarksky_image().await {
+                                    Ok(cleardarksky_image) => {
+                                        window.set_cleardarksky_image(cleardarksky_image);
+                                        println!("Updated ClearDarkSky chart");
+                                    }
+                                    Err(e) => {
+                                        eprintln!("Failed to update ClearDarkSky image: {}", e);
+                                        window.set_error_message(format!("Failed to update ClearDarkSky image: {}", e).into());
+                                    }
+                                }
                             });
                         }
                     }).unwrap();
@@ -191,6 +211,57 @@ fn decode_png_to_slint_image(png_data: &[u8]) -> Result<slint::Image, Box<dyn st
     // Create Slint image from the pixel buffer (RGBA format)
     let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(&raw_pixels, width, height);
     Ok(slint::Image::from_rgba8(pixel_buffer))
+}
+
+fn decode_gif_to_slint_image(gif_data: &[u8]) -> Result<slint::Image, Box<dyn std::error::Error>> {
+    use std::io::Cursor;
+
+    // Decode the GIF data
+    let mut decoder = gif::DecodeOptions::new();
+    decoder.set_color_output(gif::ColorOutput::RGBA);
+    let mut decoder = decoder.read_info(Cursor::new(gif_data))?;
+
+    // Read the first frame
+    if let Some(frame) = decoder.read_next_frame()? {
+        // Get dimensions
+        let width = frame.width as u32;
+        let height = frame.height as u32;
+
+        // The frame buffer contains RGBA data
+        let raw_pixels = frame.buffer.clone();
+
+        // Create Slint image from the pixel buffer (RGBA format)
+        let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(&raw_pixels, width, height);
+        Ok(slint::Image::from_rgba8(pixel_buffer))
+    } else {
+        Err("No frames in GIF".into())
+    }
+}
+
+async fn load_cleardarksky_image() -> Result<slint::Image, Box<dyn std::error::Error>> {
+    use cleardarksky::ClearDarkSkyAPI;
+
+    println!("Loading ClearDarkSky image...");
+
+    // Load coordinates
+    let coords_content = std::fs::read_to_string("../coordinates.json")?;
+    let coords: serde_json::Value = serde_json::from_str(&coords_content)?;
+    let lat: f64 = coords["lat"].as_str().unwrap().parse()?;
+    let lon: f64 = coords["lon"].as_str().unwrap().parse()?;
+
+    // Create API client
+    let api = ClearDarkSkyAPI::new();
+
+    // Fetch nearest sky chart location
+    let location = api.fetch_nearest_sky_chart_location(lat, lon).await?;
+    println!("Fetched ClearDarkSky location: {}", location);
+
+    // Fetch GIF data
+    let gif_data = api.fetch_clear_sky_chart_bytes(&location).await?;
+    println!("Fetched ClearDarkSky GIF data ({} bytes)", gif_data.len());
+
+    // Decode the GIF to Slint image
+    decode_gif_to_slint_image(&gif_data)
 }
 
 fn blend_images(image1_data: &[u8], image2_data: &[u8], weight1: f32, weight2: f32) -> Result<slint::Image, Box<dyn std::error::Error>> {

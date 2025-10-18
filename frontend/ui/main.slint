@@ -17,6 +17,7 @@ export component MainWindow inherits Window {
     in property <image> cloud_cover_image;
     in property <string> cloud_cover_counter;
     in property <image> map_image;
+    in property <image> cleardarksky_image;
 
     HorizontalBox {
         // Left side: Cloud cover prediction (top portion, 1/3 width)
@@ -97,12 +98,6 @@ export component MainWindow inherits Window {
                     color: #ff0000;
                     y: 25px;
                 }
-            }
-
-            // Bottom portion (40% of left side) - available for future use
-            Rectangle {
-                height: 40%;
-                // Empty for now - can be used for other features later
             }
         }
 
@@ -286,6 +281,25 @@ export component MainWindow inherits Window {
                             vertical-alignment: center;
                             color: #ff0000;
                         }
+                    }
+                }
+                // Bottom portion (40% of left side) - available for future use
+                // Bottom section: ClearDarkSky chart
+                Rectangle {
+                    height: 150px;
+                
+                    if (!loading && error_message == "") : Image {
+                        source: cleardarksky_image;
+                        width: 100%;
+                        height: 100%;
+                        image-fit: contain;
+                    }
+                
+                    if (!loading && error_message != "") : Text {
+                        text: error_message;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        color: #ff0000;
                     }
                 }
             }

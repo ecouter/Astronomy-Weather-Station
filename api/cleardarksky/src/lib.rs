@@ -101,6 +101,36 @@ impl ClearDarkSkyAPI {
 
         Ok(location_number.to_string())
     }
+
+    /// Fetch clear sky chart GIF bytes
+    ///
+    /// # Arguments
+    /// * `location_number` - Location identifier (e.g., "ThrsQCcsk.gif")
+    ///
+    /// # Returns
+    /// Returns the GIF data as bytes
+    pub async fn fetch_clear_sky_chart_bytes(&self, location_number: &str) -> Result<Vec<u8>, anyhow::Error> {
+        // Validate location_number format
+        if !location_number.ends_with("csk.gif") {
+            return Err(anyhow::anyhow!("Location number must end with 'csk.gif'"));
+        }
+
+        // Extract the location code (remove csk.gif suffix)
+        let location_code = location_number.trim_end_matches("csk.gif");
+
+        // Construct URL
+        let url = format!("https://cleardarksky.com/c/{}csk.gif", location_code);
+
+        // Fetch GIF data
+        let response = self.client.get(&url).send().await?;
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!("Failed to fetch sky chart GIF: HTTP {}", response.status()));
+        }
+
+        let gif_data = response.bytes().await?;
+
+        Ok(gif_data.to_vec())
+    }
 }
 
 #[cfg(test)]
