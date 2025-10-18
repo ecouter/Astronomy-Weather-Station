@@ -39,12 +39,12 @@ pub struct SeeingData {
 pub async fn fetch_meteoblue_data(lat: f64, lon: f64) -> Result<Vec<SeeingData>, anyhow::Error> {
     // Build the URL - meteoblue uses N for north, E for east (with positive lon)
     // Format: https://www.meteoblue.com/en/weather/outdoorsports/seeing/{lat}N-{lon}E
-    let lat_str = format!("{:.3}N", lat);
-    let lon_str = format!("{:.3}E", lon.abs()); // lon is always positive in E format
-    let url = format!(
-        "https://www.meteoblue.com/en/weather/outdoorsports/seeing/{}",
-        if lon >= 0.0 { format!("{}N-{}E", lat_str, lon_str) } else { format!("{}N-{}W", lat_str, -lon) } // handle west longitudes
-    );
+    let lat_str = format!("{:.3}", lat);
+    let url = if lon >= 0.0 {
+        format!("https://www.meteoblue.com/en/weather/outdoorsports/seeing/{}N-{:.3}E", lat_str, lon)
+    } else {
+        format!("https://www.meteoblue.com/en/weather/outdoorsports/seeing/{}N-{:.3}E", lat_str, -lon)
+    };
 
     // Make HTTP request
     let client = reqwest::Client::new();

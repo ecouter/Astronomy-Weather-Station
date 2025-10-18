@@ -749,7 +749,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "reqwest",
- "scraper",
+ "scraper 0.18.1",
  "serde",
  "serde_json",
  "tokio",
@@ -762,7 +762,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "reqwest",
- "scraper",
+ "scraper 0.18.1",
  "serde",
  "serde_json",
  "tokio",
@@ -2941,6 +2941,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "meteoblue"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "reqwest",
+ "scraper 0.17.1",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4363,6 +4375,23 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "scraper"
+version = "0.17.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c95a930e03325234c18c7071fd2b60118307e025d6fff3e12745ffbf63a3d29c"
+dependencies = [
+ "ahash",
+ "cssparser",
+ "ego-tree",
+ "getopts",
+ "html5ever",
+ "once_cell",
+ "selectors",
+ "smallvec",
+ "tendril",
+]
+
+[[package]]
+name = "scraper"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "585480e3719b311b78a573db1c9d9c4c1f8010c2dee4cc59c2efe58ea4dbc3e1"
@@ -5761,6 +5790,7 @@ dependencies = [
  "geomet",
  "gif",
  "image 0.24.9",
+ "meteoblue",
  "once_cell",
  "openstreetmap",
  "serde",

@@ -42,6 +42,22 @@ export component MainWindow inherits Window {
     in property <[int]> day6_clouds;
     in property <[int]> day6_hours;
 
+    // MeteoBlue night data - arrays for night overview
+    in property <[int]> night_hours;
+    in property <[int]> night_clouds_low;
+    in property <[int]> night_clouds_mid;
+    in property <[int]> night_clouds_high;
+    in property <[float]> night_seeing;
+    in property <[int]> night_index1;
+    in property <[int]> night_index2;
+    in property <[float]> night_jetstream;
+    in property <[float]> night_bad_layers_bot;
+    in property <[float]> night_bad_layers_top;
+    in property <[float]> night_bad_layers_k;
+    in property <[float]> night_temp;
+    in property <[int]> night_humidity;
+    in property <int> current_hour_index;
+
     HorizontalBox {
         // Left side: Cloud cover prediction (top portion, 1/3 width)
         padding-left: 35px;
@@ -381,6 +397,67 @@ export component MainWindow inherits Window {
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                height: 100px;
+            }
+
+            // MeteoBlue Night overview section
+            Rectangle {
+                height: 200px;
+
+                VerticalLayout {
+                    Rectangle {
+                        Text {
+                            text: "Night overview - MeteoBlue astronomy data";
+                            color: #ffffff;
+                            font-size: 12px;
+                            font-weight: 800;
+                            width: 100%;
+                            horizontal-alignment: center;
+                        }
+                    }
+
+                    // Column headers
+                    HorizontalLayout {
+                        Text { text: "Hour"; color: #ffffff; font-size: 8px; font-weight: 600; width: 25px; horizontal-alignment: center; }
+                        Text { text: "LClouds"; color: #ffffff; font-size: 8px; font-weight: 600; width: 35px; horizontal-alignment: center; }
+                        Text { text: "MClouds"; color: #ffffff; font-size: 8px; font-weight: 600; width: 35px; horizontal-alignment: center; }
+                        Text { text: "HClouds"; color: #ffffff; font-size: 8px; font-weight: 600; width: 35px; horizontal-alignment: center; }
+                        Text { text: "Seeing"; color: #ffffff; font-size: 8px; font-weight: 600; width: 30px; horizontal-alignment: center; }
+                        Text { text: "Ind.1"; color: #ffffff; font-size: 8px; font-weight: 600; width: 25px; horizontal-alignment: center; }
+                        Text { text: "Ind.2"; color: #ffffff; font-size: 8px; font-weight: 600; width: 25px; horizontal-alignment: center; }
+                        Text { text: "Jetstrm"; color: #ffffff; font-size: 8px; font-weight: 600; width: 35px; horizontal-alignment: center; }
+                        Text { text: "BdLyrBot"; color: #ffffff; font-size: 8px; font-weight: 600; width: 40px; horizontal-alignment: center; }
+                        Text { text: "BdLyrTop"; color: #ffffff; font-size: 8px; font-weight: 600; width: 40px; horizontal-alignment: center; }
+                        Text { text: "Grdt"; color: #ffffff; font-size: 8px; font-weight: 600; width: 25px; horizontal-alignment: center; }
+                        Text { text: "Temp"; color: #ffffff; font-size: 8px; font-weight: 600; width: 30px; horizontal-alignment: center; }
+                        Text { text: "Hmdty"; color: #ffffff; font-size: 8px; font-weight: 600; width: 35px; horizontal-alignment: center; }
+                    }
+
+                    // Data rows
+                    for row_idx in night_hours.length : Rectangle {
+                        background: row_idx == current_hour_index ? #444444 : transparent;
+                        border-radius: 2px;
+
+                        HorizontalLayout {
+                            Text { text: night_hours[row_idx]; color: #ffffff; font-size: 8px; width: 25px; horizontal-alignment: center; }
+                            Text { text: night_clouds_low[row_idx]; color: #ffffff; font-size: 8px; width: 35px; horizontal-alignment: center; }
+                            Text { text: night_clouds_mid[row_idx]; color: #ffffff; font-size: 8px; width: 35px; horizontal-alignment: center; }
+                            Text { text: night_clouds_high[row_idx]; color: #ffffff; font-size: 8px; width: 35px; horizontal-alignment: center; }
+                            Text { text: Math.round(night_seeing[row_idx] * 100) / 100; color: #ffffff; font-size: 8px; width: 30px; horizontal-alignment: center; }
+                            Text { text: night_index1[row_idx]; color: #ffffff; font-size: 8px; width: 25px; horizontal-alignment: center; }
+                            Text { text: night_index2[row_idx]; color: #ffffff; font-size: 8px; width: 25px; horizontal-alignment: center; }
+                            Text { text: Math.round(night_jetstream[row_idx] * 10) / 10; color: #ffffff; font-size: 8px; width: 35px; horizontal-alignment: center; }
+                            Text { text: Math.round(night_bad_layers_bot[row_idx] * 100) / 100; color: #ffffff; font-size: 8px; width: 40px; horizontal-alignment: center; }
+                            Text { text: Math.round(night_bad_layers_top[row_idx] * 100) / 100; color: #ffffff; font-size: 8px; width: 40px; horizontal-alignment: center; }
+                            Text { text: Math.round(night_bad_layers_k[row_idx] * 100) / 100; color: #ffffff; font-size: 8px; width: 25px; horizontal-alignment: center; }
+                            Text { text: Math.round(night_temp[row_idx] * 10) / 10; color: #ffffff; font-size: 8px; width: 30px; horizontal-alignment: center; }
+                            Text { text: night_humidity[row_idx]; color: #ffffff; font-size: 8px; width: 35px; horizontal-alignment: center; }
                         }
                     }
                 }
