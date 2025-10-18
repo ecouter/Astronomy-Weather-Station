@@ -489,13 +489,13 @@ impl ClearOutsideAPI {
         let mut hours = HashMap::new();
 
         // Parse hourly ratings (conditions) - this gives us the ordered list of hours
-        let hours_raw = self.parse_hourly_ratings(day)?;
+        let hours_ordered = self.parse_hourly_ratings(day)?;
 
         // Parse detailed hourly data - pass the ordered hours for correct mapping
-        let details_raw = self.parse_hourly_details(day, &hours_raw)?;
+        let details_raw = self.parse_hourly_details(day, &hours_ordered)?;
 
         // Combine the data
-        for (hour, condition) in &hours_raw {
+        for (hour, condition) in &hours_ordered {
             if let Some(details) = details_raw.get(hour) {
                 // Apply unit conversions like in Python
                 let visibility_raw = details.get("visibility").cloned().unwrap_or_else(|| "0".to_string());
@@ -545,8 +545,8 @@ impl ClearOutsideAPI {
     }
 
     /// Parse hourly ratings (conditions like "good", "bad", etc.)
-    fn parse_hourly_ratings(&self, day: scraper::ElementRef) -> Result<HashMap<String, String>, anyhow::Error> {
-        let mut ratings = HashMap::new();
+    fn parse_hourly_ratings(&self, day: scraper::ElementRef) -> Result<Vec<(String, String)>, anyhow::Error> {
+        let mut ratings = Vec::new();
 
         let hours_selector = scraper::Selector::parse("div.fc_hours.fc_hour_ratings").unwrap();
         let li_selector = scraper::Selector::parse("li").unwrap();
@@ -565,7 +565,7 @@ impl ClearOutsideAPI {
                     // First part is hour, second part is condition
                     let hour = parts[0].to_string();
                     let condition = parts[1].to_string().to_lowercase();
-                    ratings.insert(hour, condition);
+                    ratings.push((hour, condition));
                 }
             }
         }
@@ -574,113 +574,130 @@ impl ClearOutsideAPI {
     }
 
     /// Parse detailed hourly data (clouds, visibility, temperature, etc.)
-    fn parse_hourly_details(&self, day: scraper::ElementRef, hours_raw: &HashMap<String, String>) -> Result<HashMap<String, HashMap<String, String>>, anyhow::Error> {
-        let mut details_raw: Vec<Vec<String>> = Vec::new();
-
+    fn parse_hourly_details(&self, day: scraper::ElementRef, hours_ordered: &[(String, String)]) -> Result<HashMap<String, HashMap<String, String>>, anyhow::Error> {
         let detail_selector = scraper::Selector::parse("div.fc_detail.hidden-xs").unwrap();
         let row_selector = scraper::Selector::parse("div.fc_detail_row").unwrap();
+        let label_selector = scraper::Selector::parse("span.fc_detail_label").unwrap();
         let li_selector = scraper::Selector::parse("li").unwrap();
+
+        let ordered_hours: Vec<String> = hours_ordered.iter().map(|(hour, _)| hour.clone()).collect();
+        let mut details = HashMap::new();
 
         if let Some(detail_element) = day.select(&detail_selector).next() {
             let rows = detail_element.select(&row_selector).collect::<Vec<_>>();
 
-            for (row_index, row) in rows.iter().enumerate() {
+            for row in rows.iter() {
+                // Extract the label to identify the data type
+                let label_element = row.select(&label_selector).next();
+                let label = if let Some(label_elem) = label_element {
+                    label_elem.text().collect::<Vec<_>>().join(" ").trim().to_string()
+                } else {
+                    continue; // Skip rows without labels
+                };
+
+                // Skip ISS row
+                if label.contains("ISS") {
+                    continue;
+                }
+
                 let li_elements = row.select(&li_selector).collect::<Vec<_>>();
                 let mut row_values: Vec<String> = Vec::new();
 
-                match row_index {
-                    4 => {
-                        // Skip ISS row (case 4 in Python)
-                        continue;
-                    }
-                    7 => {
-                        // Precipitation case - use title attribute
-                        for li in li_elements {
-                            if let Some(title) = li.value().attr("title") {
-                                let processed_title = title.replace(" ", "-").to_lowercase();
-                                row_values.push(processed_title);
-                            } else {
-                                row_values.push("none".to_string());
-                            }
+                // Parse based on label content
+                if label.contains("Precipitation Type") {
+                    // Use title attribute
+                    for li in li_elements {
+                        if let Some(title) = li.value().attr("title") {
+                            let processed_title = title.replace(" ", "-").to_lowercase();
+                            row_values.push(processed_title);
+                        } else {
+                            row_values.push("none".to_string());
                         }
                     }
-                    10 => {
-                        // Wind case - use class and text
-                        for li in li_elements {
-                            if let Some(class) = li.value().attr("class") {
-                                if class.contains("fc_") {
-                                    let direction = class.split("fc_").nth(1).unwrap_or("unknown");
-                                    let speed = li.text().collect::<String>().trim().to_string();
-                                    row_values.push(format!("{}|{}", direction, speed));
-                                } else {
-                                    row_values.push("unknown|0".to_string());
-                                }
+                } else if label.contains("Wind") {
+                    // Use class for direction and text for speed
+                    for li in li_elements {
+                        if let Some(class) = li.value().attr("class") {
+                            if class.contains("fc_wind") {
+                                // Extract direction from class: "fc_wind south-south-east fc_ok" -> "south-south-east"
+                                let direction = class.split_whitespace()
+                                    .nth(1)
+                                    .unwrap_or("unknown")
+                                    .to_string();
+                                let speed = li.text().collect::<String>().trim().to_string();
+                                row_values.push(format!("{}|{}", direction, speed));
                             } else {
                                 row_values.push("unknown|0".to_string());
                             }
+                        } else {
+                            row_values.push("unknown|0".to_string());
                         }
                     }
-                    11 => {
-                        // Frost case - check class
-                        for li in li_elements {
-                            if let Some(class) = li.value().attr("class") {
-                                if class != "fc_none" {
-                                    row_values.push("frost".to_string());
-                                } else {
-                                    row_values.push("none".to_string());
-                                }
+                } else if label.contains("Frost") {
+                    // Check class for frost
+                    for li in li_elements {
+                        if let Some(class) = li.value().attr("class") {
+                            if class != "fc_none" {
+                                row_values.push("frost".to_string());
                             } else {
                                 row_values.push("none".to_string());
                             }
+                        } else {
+                            row_values.push("none".to_string());
                         }
                     }
-                    12 | 13 | 14 => {
-                        // Temperature, humidity, pressure cases - direct text
-                        for li in li_elements {
-                            let text = li.text().collect::<String>().trim().to_string();
-                            row_values.push(text);
-                        }
-                    }
-                    _ => {
-                        // General case - replace "-" with "0"
-                        for li in li_elements {
-                            let text = li.text().collect::<String>().trim().to_string();
-                            let processed = if text == "-" { "0".to_string() } else { text };
-                            row_values.push(processed);
-                        }
+                } else {
+                    // General case - replace "-" with "0"
+                    for li in li_elements {
+                        let text = li.text().collect::<String>().trim().to_string();
+                        let processed = if text == "-" { "0".to_string() } else { text };
+                        row_values.push(processed);
                     }
                 }
 
-                if !row_values.is_empty() {
-                    details_raw.push(row_values);
-                }
-            }
-        }
+                // Map to appropriate field based on label
+                let field_name = if label.contains("Total Clouds") {
+                    "total_clouds"
+                } else if label.contains("Low Clouds") {
+                    "low_clouds"
+                } else if label.contains("Medium Clouds") {
+                    "mid_clouds"
+                } else if label.contains("High Clouds") {
+                    "high_clouds"
+                } else if label.contains("Visibility") {
+                    "visibility"
+                } else if label.contains("Fog") {
+                    "fog"
+                } else if label.contains("Precipitation Type") {
+                    "prec_type"
+                } else if label.contains("Precipitation Probability") {
+                    "prec_probability"
+                } else if label.contains("Precipitation Amount") {
+                    "prec_amount"
+                } else if label.contains("Wind") {
+                    // Special handling for wind
+                    self.add_hourly_wind_values_with_keys(&ordered_hours, &row_values, &mut details);
+                    continue; // Skip normal processing
+                } else if label.contains("Frost") {
+                    "frost"
+                } else if label.contains("Temperature") {
+                    "temperature"
+                } else if label.contains("Feels Like") {
+                    "feels_like"
+                } else if label.contains("Dew Point") {
+                    "dew_point"
+                } else if label.contains("Relative Humidity") {
+                    "rel_humidity"
+                } else if label.contains("Pressure") {
+                    "pressure"
+                } else if label.contains("Ozone") {
+                    "ozone"
+                } else {
+                    continue; // Unknown field, skip
+                };
 
-        // Convert the 2D vector to the expected HashMap format
-        // Use the ordered hours from hours_raw as keys instead of indices
-        let ordered_hours: Vec<String> = hours_raw.keys().cloned().collect();
-        let mut details = HashMap::new();
-        for (row_index, row_values) in details_raw.iter().enumerate() {
-            match row_index {
-                0 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "total_clouds", &mut details),
-                1 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "low_clouds", &mut details),
-                2 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "mid_clouds", &mut details),
-                3 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "high_clouds", &mut details),
-                4 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "visibility", &mut details),
-                5 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "fog", &mut details),
-                6 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "prec_type", &mut details),
-                7 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "prec_probability", &mut details),
-                8 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "prec_amount", &mut details),
-                9 => self.add_hourly_wind_values_with_keys(&ordered_hours, row_values, &mut details),
-                10 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "frost", &mut details),
-                11 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "temperature", &mut details),
-                12 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "feels_like", &mut details),
-                13 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "dew_point", &mut details),
-                14 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "rel_humidity", &mut details),
-                15 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "pressure", &mut details),
-                16 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "ozone", &mut details),
-                _ => {}
+                // Add values to details map
+                self.add_hourly_values_with_keys(&ordered_hours, &row_values, field_name, &mut details);
             }
         }
 
@@ -732,5 +749,77 @@ mod tests {
         // In a real implementation, you might use mock data or a test server
         let api_result = ClearOutsideAPI::new("45.50", "-73.57", Some("midday")).await;
         assert!(api_result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_hourly_details_with_sample_html() {
+        // Sample HTML content with known data
+        let html_content = r#"
+        <div class="fc_day">
+          <div class="fc_detail hidden-xs">
+            <div class="fc_detail_row">
+              <span class="fc_detail_label"><span>Total Clouds (% Sky Obscured)</span></span>
+              <div class="fc_hours">
+                <ul>
+                  <li class="fc_cl_15">84</li>
+                  <li class="fc_cl_25">77</li>
+                </ul>
+              </div>
+            </div>
+            <div class="fc_detail_row">
+              <span class="fc_detail_label"><span>Low Clouds (% Sky Obscured)</span></span>
+              <div class="fc_hours">
+                <ul>
+                  <li class="fc_cl_25">77</li>
+                  <li class="fc_cl_35">65</li>
+                </ul>
+              </div>
+            </div>
+            <div class="fc_detail_row">
+              <span class="fc_detail_label"><span>Wind Speed/Direction (mph)</span></span>
+              <div class="fc_hours">
+                <ul>
+                  <li title="11mph from the South-South-East (153°)" class="fc_wind south-south-east fc_ok"><span>11</span></li>
+                  <li title="10mph from the South-South-East (160°)" class="fc_wind south-south-east fc_good"><span>10</span></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+        "#;
+
+        let document = scraper::Html::parse_document(&html_content);
+        let day_selector = scraper::Selector::parse("div.fc_day").unwrap();
+        let day_element = document.select(&day_selector).next().unwrap();
+
+        let api = ClearOutsideAPI {
+            url: "test".to_string(),
+            html_content: html_content.to_string(),
+        };
+
+        let hours_ordered = vec![
+            ("12".to_string(), "good".to_string()),
+            ("13".to_string(), "bad".to_string()),
+        ];
+
+        let result = api.parse_hourly_details(day_element, &hours_ordered);
+
+        assert!(result.is_ok());
+        let details = result.unwrap();
+
+        // Check total clouds for hour 12
+        assert_eq!(details.get("12").unwrap().get("total_clouds"), Some(&"84".to_string()));
+        // Check total clouds for hour 13
+        assert_eq!(details.get("13").unwrap().get("total_clouds"), Some(&"77".to_string()));
+
+        // Check low clouds
+        assert_eq!(details.get("12").unwrap().get("low_clouds"), Some(&"77".to_string()));
+        assert_eq!(details.get("13").unwrap().get("low_clouds"), Some(&"65".to_string()));
+
+        // Check wind
+        assert_eq!(details.get("12").unwrap().get("wind_direction"), Some(&"south-south-east".to_string()));
+        assert_eq!(details.get("12").unwrap().get("wind_speed"), Some(&"11".to_string()));
+        assert_eq!(details.get("13").unwrap().get("wind_direction"), Some(&"south-south-east".to_string()));
+        assert_eq!(details.get("13").unwrap().get("wind_speed"), Some(&"10".to_string()));
     }
 }

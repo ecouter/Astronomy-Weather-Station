@@ -167,7 +167,7 @@ pub fn parse_seeing_table(html: &str) -> Result<Vec<SeeingData>, anyhow::Error> 
 
                     let bad_layers_k_per_100m = if cells[10].chars().any(|c| c.is_digit(10)) {
                         cells[10].split('K').next()
-                            .and_then(|s| s.parse::<f32>().ok())
+                            .and_then(|s| s.trim().parse::<f32>().ok())
                     } else { None };
 
                     // Parse temperature and humidity (cells 11-12)
