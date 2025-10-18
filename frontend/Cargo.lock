@@ -756,6 +756,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "clearoutside"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "reqwest",
+ "scraper",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "clipboard-win"
 version = "5.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5743,6 +5756,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "cleardarksky",
+ "clearoutside",
  "crc32fast",
  "geomet",
  "gif",

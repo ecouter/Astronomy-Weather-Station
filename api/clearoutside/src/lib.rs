@@ -488,15 +488,15 @@ impl ClearOutsideAPI {
     fn parse_hourly_data(&self, day: scraper::ElementRef) -> Result<HashMap<String, HourlyData>, anyhow::Error> {
         let mut hours = HashMap::new();
 
-        // Parse hourly ratings (conditions)
+        // Parse hourly ratings (conditions) - this gives us the ordered list of hours
         let hours_raw = self.parse_hourly_ratings(day)?;
 
-        // Parse detailed hourly data
-        let details_raw = self.parse_hourly_details(day)?;
+        // Parse detailed hourly data - pass the ordered hours for correct mapping
+        let details_raw = self.parse_hourly_details(day, &hours_raw)?;
 
         // Combine the data
-        for (hour, condition) in hours_raw {
-            if let Some(details) = details_raw.get(&hour) {
+        for (hour, condition) in &hours_raw {
+            if let Some(details) = details_raw.get(hour) {
                 // Apply unit conversions like in Python
                 let visibility_raw = details.get("visibility").cloned().unwrap_or_else(|| "0".to_string());
                 let visibility_km = if let Ok(vis_int) = visibility_raw.parse::<i32>() {
@@ -513,7 +513,7 @@ impl ClearOutsideAPI {
                 };
 
                 let hourly_data = HourlyData {
-                    conditions: condition,
+                    conditions: condition.clone(),
                     total_clouds: details.get("total_clouds").cloned().unwrap_or_else(|| "0".to_string()),
                     low_clouds: details.get("low_clouds").cloned().unwrap_or_else(|| "0".to_string()),
                     mid_clouds: details.get("mid_clouds").cloned().unwrap_or_else(|| "0".to_string()),
@@ -537,7 +537,7 @@ impl ClearOutsideAPI {
                     pressure: details.get("pressure").cloned().unwrap_or_else(|| "0".to_string()),
                     ozone: details.get("ozone").cloned().unwrap_or_else(|| "0".to_string()),
                 };
-                hours.insert(hour, hourly_data);
+                hours.insert(hour.clone(), hourly_data);
             }
         }
 
@@ -574,7 +574,7 @@ impl ClearOutsideAPI {
     }
 
     /// Parse detailed hourly data (clouds, visibility, temperature, etc.)
-    fn parse_hourly_details(&self, day: scraper::ElementRef) -> Result<HashMap<String, HashMap<String, String>>, anyhow::Error> {
+    fn parse_hourly_details(&self, day: scraper::ElementRef, hours_raw: &HashMap<String, String>) -> Result<HashMap<String, HashMap<String, String>>, anyhow::Error> {
         let mut details_raw: Vec<Vec<String>> = Vec::new();
 
         let detail_selector = scraper::Selector::parse("div.fc_detail.hidden-xs").unwrap();
@@ -658,26 +658,28 @@ impl ClearOutsideAPI {
         }
 
         // Convert the 2D vector to the expected HashMap format
+        // Use the ordered hours from hours_raw as keys instead of indices
+        let ordered_hours: Vec<String> = hours_raw.keys().cloned().collect();
         let mut details = HashMap::new();
         for (row_index, row_values) in details_raw.iter().enumerate() {
             match row_index {
-                0 => self.add_hourly_values(row_values, "total_clouds", &mut details),
-                1 => self.add_hourly_values(row_values, "low_clouds", &mut details),
-                2 => self.add_hourly_values(row_values, "mid_clouds", &mut details),
-                3 => self.add_hourly_values(row_values, "high_clouds", &mut details),
-                4 => self.add_hourly_values(row_values, "visibility", &mut details),
-                5 => self.add_hourly_values(row_values, "fog", &mut details),
-                6 => self.add_hourly_values(row_values, "prec_type", &mut details),
-                7 => self.add_hourly_values(row_values, "prec_probability", &mut details),
-                8 => self.add_hourly_values(row_values, "prec_amount", &mut details),
-                9 => self.add_hourly_wind_values(row_values, &mut details),
-                10 => self.add_hourly_values(row_values, "frost", &mut details),
-                11 => self.add_hourly_values(row_values, "temperature", &mut details),
-                12 => self.add_hourly_values(row_values, "feels_like", &mut details),
-                13 => self.add_hourly_values(row_values, "dew_point", &mut details),
-                14 => self.add_hourly_values(row_values, "rel_humidity", &mut details),
-                15 => self.add_hourly_values(row_values, "pressure", &mut details),
-                16 => self.add_hourly_values(row_values, "ozone", &mut details),
+                0 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "total_clouds", &mut details),
+                1 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "low_clouds", &mut details),
+                2 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "mid_clouds", &mut details),
+                3 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "high_clouds", &mut details),
+                4 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "visibility", &mut details),
+                5 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "fog", &mut details),
+                6 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "prec_type", &mut details),
+                7 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "prec_probability", &mut details),
+                8 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "prec_amount", &mut details),
+                9 => self.add_hourly_wind_values_with_keys(&ordered_hours, row_values, &mut details),
+                10 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "frost", &mut details),
+                11 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "temperature", &mut details),
+                12 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "feels_like", &mut details),
+                13 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "dew_point", &mut details),
+                14 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "rel_humidity", &mut details),
+                15 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "pressure", &mut details),
+                16 => self.add_hourly_values_with_keys(&ordered_hours, row_values, "ozone", &mut details),
                 _ => {}
             }
         }
@@ -693,19 +695,31 @@ impl ClearOutsideAPI {
         }
     }
 
-    /// Helper function to add wind values (special parsing needed)
-    fn add_hourly_wind_values(&self, values: &[String], details: &mut HashMap<String, HashMap<String, String>>) {
+    /// Helper function to add hourly values to the details map using ordered hour keys
+    fn add_hourly_values_with_keys(&self, ordered_hours: &[String], values: &[String], field_name: &str, details: &mut HashMap<String, HashMap<String, String>>) {
         for (i, value) in values.iter().enumerate() {
-            let hour = i.to_string();
-            if let Some((direction, speed)) = value.split_once('|') {
-                details.entry(hour.clone()).or_insert_with(HashMap::new).insert("wind_direction".to_string(), direction.to_string());
-                details.entry(hour).or_insert_with(HashMap::new).insert("wind_speed".to_string(), speed.to_string());
-            } else {
-                details.entry(hour.clone()).or_insert_with(HashMap::new).insert("wind_direction".to_string(), "unknown".to_string());
-                details.entry(hour).or_insert_with(HashMap::new).insert("wind_speed".to_string(), value.clone());
+            if let Some(hour) = ordered_hours.get(i) {
+                details.entry(hour.clone()).or_insert_with(HashMap::new).insert(field_name.to_string(), value.clone());
             }
         }
     }
+
+    /// Helper function to add wind values (special parsing needed) using ordered hour keys
+    fn add_hourly_wind_values_with_keys(&self, ordered_hours: &[String], values: &[String], details: &mut HashMap<String, HashMap<String, String>>) {
+        for (i, value) in values.iter().enumerate() {
+            if let Some(hour) = ordered_hours.get(i) {
+                if let Some((direction, speed)) = value.split_once('|') {
+                    details.entry(hour.clone()).or_insert_with(HashMap::new).insert("wind_direction".to_string(), direction.to_string());
+                    details.entry(hour.clone()).or_insert_with(HashMap::new).insert("wind_speed".to_string(), speed.to_string());
+                } else {
+                    details.entry(hour.clone()).or_insert_with(HashMap::new).insert("wind_direction".to_string(), "unknown".to_string());
+                    details.entry(hour.clone()).or_insert_with(HashMap::new).insert("wind_speed".to_string(), value.clone());
+                }
+            }
+        }
+    }
+
+
 }
 
 #[cfg(test)]
