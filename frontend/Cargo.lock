@@ -3430,6 +3430,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "openstreetmap"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "image 0.24.9",
+ "reqwest",
+ "tokio",
+]
+
+[[package]]
 name = "orbclient"
 version = "0.3.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5412,6 +5423,7 @@ dependencies = [
  "gif",
  "image 0.24.9",
  "once_cell",
+ "openstreetmap",
  "serde",
  "serde_json",
  "slint",

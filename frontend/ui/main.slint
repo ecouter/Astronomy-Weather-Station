@@ -16,6 +16,7 @@ export component MainWindow inherits Window {
     in property <image> legend_image;
     in property <image> cloud_cover_image;
     in property <string> cloud_cover_counter;
+    in property <image> map_image;
 
     HorizontalBox {
         // Left side: Cloud cover prediction (top portion, 1/3 width)
@@ -49,12 +50,21 @@ export component MainWindow inherits Window {
                     width: 100%;
                     height: 100%;
 
-                    // Cloud cover image
+                    // Map background image
+                    Image {
+                        source: map_image;
+                        width: 100%;
+                        height: 100%;
+                        image-fit: fill;
+                    }
+
+                    // Cloud cover image (overlaid with alpha)
                     Image {
                         source: cloud_cover_image;
                         width: 100%;
                         height: 100%;
                         image-fit: fill;
+                        opacity: 80%;
                     }
 
                     // Red dot at center (coordinate location)
@@ -232,12 +242,21 @@ export component MainWindow inherits Window {
                             width: 100%;
                             height: 100%;
 
+                            // Map background image
+                            Image {
+                                source: map_image;
+                                width: 100%;
+                                height: 100%;
+                                image-fit: fill;
+                            }
+
                             // Main image
                             Image {
                                 source: bottom_right_image;
                                 width: 100%;
                                 height: 100%;
                                 image-fit: fill;
+                                opacity: 60%;
                             }
 
                             // Legend overlaid on bottom-right

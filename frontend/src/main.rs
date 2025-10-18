@@ -25,6 +25,15 @@ fn main() -> Result<(), slint::PlatformError> {
             eprintln!("Failed to load initial cloud cover images: {}", e);
             main_window.set_error_message(format!("Failed to load cloud cover images: {}", e).into());
         }
+        match load_map_image().await {
+            Ok(map_image) => {
+                main_window.set_map_image(map_image);
+            }
+            Err(e) => {
+                eprintln!("Failed to load map image: {}", e);
+                main_window.set_error_message(format!("Failed to load map image: {}", e).into());
+            }
+        }
     });
 
     main_window.set_loading(false);
@@ -265,7 +274,7 @@ async fn update_weather_images(main_window: &MainWindow) -> Result<(), Box<dyn s
     let (top_left_data, top_right_data, bottom_left_data, bottom_right_data, legend_data) = tokio::try_join!(
         api.get_wms_image("GOES-East_1km_VisibleIRSandwich-NightMicrophysicsIR", &goes_time_str, bbox.clone(), width, height),
         api.get_wms_image("GOES-East_2km_NightMicrophysics", &goes_time_str, bbox.clone(), width, height),
-        api.get_wms_image("GOES-East_1km_NaturalColor", &goes_time_str, bbox.clone(), width, height),
+        api.get_wms_image("GOES-East_1km_DayVis-NightIR", &goes_time_str, bbox.clone(), width, height),
         api.get_wms_image("HRDPS.CONTINENTAL_PN-SLP", &hrdps_time_str, bbox.clone(), width, height),
         api.get_legend_graphic("HRDPS.CONTINENTAL_PN-SLP", Some("PRESSURE4"), "image/png", Some("en"))
     )?;
@@ -278,13 +287,13 @@ async fn update_weather_images(main_window: &MainWindow) -> Result<(), Box<dyn s
     let legend_image = decode_png_to_slint_image(&legend_data)?;
 
     // Blend bottom right image: 80% bottom right + 20% bottom left
-    let blended_bottom_right = blend_images(&bottom_right_data, &bottom_left_data, 0.8, 0.2)?;
+    //let blended_bottom_right = blend_images(&bottom_right_data, &bottom_left_data, 0.8, 0.2)?;
 
     // Update UI
     main_window.set_top_left_image(top_left_image);
     main_window.set_top_right_image(top_right_image);
     main_window.set_bottom_left_image(bottom_left_image);
-    main_window.set_bottom_right_image(blended_bottom_right);
+    main_window.set_bottom_right_image(bottom_right_image);
     main_window.set_legend_image(legend_image);
 
     // Clear any previous error
@@ -402,4 +411,54 @@ fn update_cloud_cover_display(main_window: &MainWindow) {
     } else {
         println!("No cloud cover images available for display");
     }
+}
+
+async fn load_map_image() -> Result<slint::Image, Box<dyn std::error::Error>> {
+    use openstreetmap::OpenStreetMapAPI;
+
+    println!("Loading map image...");
+
+    // Load coordinates
+    let coords_content = std::fs::read_to_string("../coordinates.json")?;
+    let coords: serde_json::Value = serde_json::from_str(&coords_content)?;
+    let lat: f64 = coords["lat"].as_str().unwrap().parse()?;
+    let lon: f64 = coords["lon"].as_str().unwrap().parse()?;
+
+    // Create filename based on coordinates
+    let filename = format!("{}_{}.png", lat, lon);
+    let filepath = std::path::Path::new("ui/images/").join(&filename);
+
+    // Check if map already exists
+    if filepath.exists() {
+        println!("Map file {} already exists, loading from disk", filename);
+        let img = image::open(&filepath)?;
+        let rgba_img = img.to_rgba8();
+        let width = rgba_img.width() as u32;
+        let height = rgba_img.height() as u32;
+        let raw_pixels: Vec<u8> = rgba_img.into_raw();
+        let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(&raw_pixels, width, height);
+        return Ok(slint::Image::from_rgba8(pixel_buffer));
+    }
+
+    println!("Map file {} does not exist, fetching from OpenStreetMap API", filename);
+
+    // Create API client
+    let api = OpenStreetMapAPI::new();
+
+    // Define bounding box around coordinates (~1° x 1°)
+    let bbox = (lat - 5.0, lon - 8.9, lat + 5.0, lon + 8.9);
+
+    // Download and save map (400x225 pixels, zoom level 10)
+    api.download_and_save_map(bbox, 6, &filepath).await?;
+
+    println!("Map saved to {:?}", filepath);
+
+    // Load the saved image
+    let img = image::open(&filepath)?;
+    let rgba_img = img.to_rgba8();
+    let width = rgba_img.width() as u32;
+    let height = rgba_img.height() as u32;
+    let raw_pixels: Vec<u8> = rgba_img.into_raw();
+    let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(&raw_pixels, width, height);
+    Ok(slint::Image::from_rgba8(pixel_buffer))
 }
