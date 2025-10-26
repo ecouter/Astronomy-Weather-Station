@@ -71,6 +71,13 @@ export component MainWindow inherits Window {
     in property <image> env_transparency_image;
     in property <image> env_relative_humidity_image;
     in-out property <bool> show_env_canada: false;
+    in-out property <bool> show_zoomed_image: false;
+    in-out property <bool> has_legend: false;
+    in-out property <bool> has_map: false;
+    in-out property <bool> image_opacity_reduction: false;
+    in-out property <image> zoomed_image;
+    in-out property <image> legend;
+    in-out property <string> zoomed_title;
 
     if (!show_env_canada): HorizontalBox {
         // Left side: Cloud cover prediction (top portion, 1/3 width)
@@ -90,66 +97,80 @@ export component MainWindow inherits Window {
             }
 
             // Cloud cover section (top 60% of left side)
-            Rectangle {
+            TouchArea {
                 height: 225px; // 60% of left side height
 
-                if (loading) : Text {
-                    text: "Loading cloud cover...";
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                    y: 25px;
-                }
-
-                if (!loading && error_message == "") : Rectangle {
+                Rectangle {
                     width: 100%;
                     height: 100%;
 
-                    // Map background image
-                    Image {
-                        source: map_image;
+                    if (loading) : Text {
+                        text: "Loading cloud cover...";
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        y: 25px;
+                    }
+
+                    if (!loading && error_message == "") : Rectangle {
                         width: 100%;
                         height: 100%;
-                        image-fit: fill;
+
+                        // Map background image
+                        Image {
+                            source: map_image;
+                            width: 100%;
+                            height: 100%;
+                            image-fit: fill;
+                        }
+
+                        // Cloud cover image (overlaid with alpha)
+                        Image {
+                            source: cloud_cover_image;
+                            width: 100%;
+                            height: 100%;
+                            image-fit: fill;
+                            opacity: 80%;
+                        }
+
+                        // Red dot at center (coordinate location)
+                        Rectangle {
+                            width: 4px;
+                            height: 4px;
+                            background: #ff0000;
+                            border-radius: 4px;
+                            x: (parent.width - 4px) / 2;
+                            y: (parent.height - 4px) / 2;
+                        }
+
+                        // Counter overlay
+                        Text {
+                            text: cloud_cover_counter;
+                            color: #ff0000;
+                            font-size: 24px;
+                            font-weight: 700;
+                            horizontal-alignment: left;
+                            vertical-alignment: top;
+                            x: 10px;
+                            y: 10px;
+                        }
                     }
 
-                    // Cloud cover image (overlaid with alpha)
-                    Image {
-                        source: cloud_cover_image;
-                        width: 100%;
-                        height: 100%;
-                        image-fit: fill;
-                        opacity: 80%;
-                    }
-
-                    // Red dot at center (coordinate location)
-                    Rectangle {
-                        width: 4px;
-                        height: 4px;
-                        background: #ff0000;
-                        border-radius: 4px;
-                        x: (parent.width - 4px) / 2;
-                        y: (parent.height - 4px) / 2;
-                    }
-
-                    // Counter overlay
-                    Text {
-                        text: cloud_cover_counter;
+                    if (!loading && error_message != "") : Text {
+                        text: error_message;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
                         color: #ff0000;
-                        font-size: 24px;
-                        font-weight: 700;
-                        horizontal-alignment: left;
-                        vertical-alignment: top;
-                        x: 10px;
-                        y: 10px;
+                        y: 25px;
                     }
                 }
 
-                if (!loading && error_message != "") : Text {
-                    text: error_message;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                    color: #ff0000;
-                    y: 25px;
+                clicked => {
+                    if (!loading && error_message == "") {
+                        has_map = true;
+                        zoomed_image = cloud_cover_image;
+                        zoomed_title = "Cloud Cover Prediction";
+                        show_zoomed_image = true;
+                    }
                 }
             }
 
@@ -500,11 +521,20 @@ export component MainWindow inherits Window {
                             vertical-alignment: center;
                         }
 
-                        if (!loading && error_message == "") : Image {
-                            source: top_left_image;
+                        if (!loading && error_message == "") : TouchArea {
                             width: 100%;
                             height: 100%;
-                            image-fit: fill;
+                            Image {
+                                source: top_left_image;
+                                width: 100%;
+                                height: 100%;
+                                image-fit: fill;
+                            }
+                            clicked => {
+                                zoomed_image = top_left_image;
+                                zoomed_title = "GOES-East Visible/IR Sandwich";
+                                show_zoomed_image = true;
+                            }
                         }
 
                         // Red dot at center (coordinate location)
@@ -526,75 +556,91 @@ export component MainWindow inherits Window {
                     }
 
                     // Top-right: Wind pressure visualization
-                    Rectangle {
+                    TouchArea {
                         width: 50%;
 
-                        if (loading) : Text {
-                            text: "Loading wind...";
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-
-                        if (!loading && error_message == "") : Rectangle {
+                        Rectangle {
                             width: 100%;
                             height: 100%;
 
-                            // Map background image
-                            Image {
-                                source: map_image;
+                            if (loading) : Text {
+                                text: "Loading wind...";
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+
+                            if (!loading && error_message == "") : Rectangle {
                                 width: 100%;
                                 height: 100%;
-                                image-fit: fill;
-                                opacity: 70%;
+
+                                // Map background image
+                                Image {
+                                    source: map_image;
+                                    width: 100%;
+                                    height: 100%;
+                                    image-fit: fill;
+                                    opacity: 70%;
+                                }
+
+                                // Wind image overlay
+                                Image {
+                                    source: wind_image;
+                                    width: 100%;
+                                    height: 100%;
+                                    image-fit: fill;
+                                }
+
+                                // Legend overlaid on right
+                                Image {
+                                    source: wind_legend_image;
+                                    vertical-alignment: bottom;
+                                    width: 100%;
+                                    height: 40%;
+                                    x: parent.width * 0.42;
+                                    y: parent.height * 0;
+                                    image-fit: contain;
+                                }
+
+                                // Red dot at center (coordinate location)
+                                Rectangle {
+                                    width: 4px;
+                                    height: 4px;
+                                    background: #ff0000;
+                                    border-radius: 4px;
+                                    x: (parent.width - 4px) / 2;
+                                    y: (parent.height - 4px) / 2;
+                                }
+
+                                // Counter overlay on top left
+                                Text {
+                                    text: wind_counter;
+                                    color: #ff0000;
+                                    font-size: 24px;
+                                    font-weight: 700;
+                                    horizontal-alignment: left;
+                                    vertical-alignment: top;
+                                    x: 10px;
+                                    y: 10px;
+                                }
                             }
 
-                            // Wind image overlay
-                            Image {
-                                source: wind_image;
-                                width: 100%;
-                                height: 100%;
-                                image-fit: fill;
-                            }
-
-                            // Legend overlaid on right
-                            Image {
-                                source: wind_legend_image;
-                                vertical-alignment: bottom;
-                                width: 100%;
-                                height: 40%;
-                                x: parent.width * 0.42;
-                                y: parent.height * 0;
-                                image-fit: contain;
-                            }
-
-                            // Red dot at center (coordinate location)
-                            Rectangle {
-                                width: 4px;
-                                height: 4px;
-                                background: #ff0000;
-                                border-radius: 4px;
-                                x: (parent.width - 4px) / 2;
-                                y: (parent.height - 4px) / 2;
-                            }
-
-                            // Counter overlay on top left
-                            Text {
-                                text: wind_counter;
+                            if (!loading && error_message != "") : Text {
+                                text: error_message;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
                                 color: #ff0000;
-                                font-size: 24px;
-                                font-weight: 700;
-                                horizontal-alignment: left;
-                                vertical-alignment: top;
-                                x: 10px;
-                                y: 10px;
                             }
                         }
 
-                        if (!loading && error_message != "") : Text {
-                            text: error_message;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                            color: #ff0000;
+                        clicked => {
+                            if (!loading && error_message == "") {
+                                has_legend = true;
+                                legend = wind_legend_image;
+                                has_map = true;
+                                zoomed_image = wind_image;
+                                zoomed_title = "Wind Pressure Visualization";
+                                show_zoomed_image = true;
+                            }
                         }
                     }
                 }
@@ -613,11 +659,20 @@ export component MainWindow inherits Window {
                             vertical-alignment: center;
                         }
 
-                        if (!loading && error_message == "") : Image {
-                            source: bottom_left_image;
+                        if (!loading && error_message == "") : TouchArea {
                             width: 100%;
                             height: 100%;
-                            image-fit: fill;
+                            Image {
+                                source: bottom_left_image;
+                                width: 100%;
+                                height: 100%;
+                                image-fit: fill;
+                            }
+                            clicked => {
+                                zoomed_image = bottom_left_image;
+                                zoomed_title = "GOES-East Natural Color";
+                                show_zoomed_image = true;
+                            }
                         }
 
                         // Red dot at center (coordinate location)
@@ -639,55 +694,97 @@ export component MainWindow inherits Window {
                     }
 
                     // Bottom-right: HRDPS.CONTINENTAL_PN-SLP (blended) with legend overlaid
-                    Rectangle {
+                    TouchArea {
                         width: 50%;
 
-                        if (loading) : Text {
-                            text: "Loading...";
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-
-                        if (!loading && error_message == "") : Rectangle {
+                        Rectangle {
                             width: 100%;
                             height: 100%;
 
-                            // Map background image
-                            Image {
-                                source: map_image;
-                                width: 100%;
-                                height: 100%;
-                                image-fit: fill;
+                            if (loading) : Text {
+                                text: "Loading...";
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
                             }
 
-                            // Main image
-                            Image {
-                                source: bottom_right_image;
+                            if (!loading && error_message == "") : Rectangle {
                                 width: 100%;
                                 height: 100%;
-                                image-fit: fill;
-                                opacity: 60%;
+
+                                // Map background image
+                                Image {
+                                    source: map_image;
+                                    width: 100%;
+                                    height: 100%;
+                                    image-fit: fill;
+                                }
+
+                                // Main image
+                                Image {
+                                    source: bottom_right_image;
+                                    width: 100%;
+                                    height: 100%;
+                                    image-fit: fill;
+                                    opacity: 60%;
+                                }
+
+                                // Legend overlaid on bottom-right
+                                Image {
+                                    source: legend_image;
+                                    width: 100%;
+                                    height: 100%;
+                                    x: parent.width * 0.42;
+                                    y: parent.height * 0;
+                                    image-fit: contain;
+                                }
+
+                                // Red dot at center (coordinate location)
+                                Rectangle {
+                                    width: 4px;
+                                    height: 4px;
+                                    background: #ff0000;
+                                    border-radius: 4px;
+                                    x: (parent.width - 4px) / 2;
+                                    y: (parent.height - 4px) / 2;
+                                }
                             }
 
-                            // Legend overlaid on bottom-right
-                            Image {
-                                source: legend_image;
-                                width: 100%;
-                                height: 100%;
-                                x: parent.width * 0.42;
-                                y: parent.height * 0;
-                                image-fit: contain;
+                            if (!loading && error_message != "") : Text {
+                                text: error_message;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                color: #ff0000;
                             }
+                        }
 
-                            // Red dot at center (coordinate location)
-                            Rectangle {
-                                width: 4px;
-                                height: 4px;
-                                background: #ff0000;
-                                border-radius: 4px;
-                                x: (parent.width - 4px) / 2;
-                                y: (parent.height - 4px) / 2;
+                        clicked => {
+                            if (!loading && error_message == "") {
+                                has_map = true;
+                                has_legend = true;
+                                image_opacity_reduction = true;
+                                legend = legend_image;
+                                zoomed_image = bottom_right_image;
+                                zoomed_title = "HRDPS Surface Pressure";
+                                show_zoomed_image = true;
                             }
+                        }
+                    }
+                }
+                // Bottom portion (40% of left side) - available for future use
+                // Bottom section: ClearDarkSky chart
+                TouchArea {
+                    width: 100%;
+                    height: 150px;
+
+                    Rectangle {
+                        width: 100%;
+                        height: 100%;
+
+                        if (!loading && error_message == "") : Image {
+                            source: cleardarksky_image;
+                            width: 100%;
+                            height: 100%;
+                            image-fit: contain;
                         }
 
                         if (!loading && error_message != "") : Text {
@@ -697,24 +794,13 @@ export component MainWindow inherits Window {
                             color: #ff0000;
                         }
                     }
-                }
-                // Bottom portion (40% of left side) - available for future use
-                // Bottom section: ClearDarkSky chart
-                Rectangle {
-                    height: 150px;
-                
-                    if (!loading && error_message == "") : Image {
-                        source: cleardarksky_image;
-                        width: 100%;
-                        height: 100%;
-                        image-fit: contain;
-                    }
-                
-                    if (!loading && error_message != "") : Text {
-                        text: error_message;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                        color: #ff0000;
+
+                    clicked => {
+                        if (!loading && error_message == "") {
+                            zoomed_image = cleardarksky_image;
+                            zoomed_title = "ClearDarkSky Chart";
+                            show_zoomed_image = true;
+                        }
                     }
                 }
             }
@@ -759,7 +845,7 @@ export component MainWindow inherits Window {
             Rectangle {
                 background: #1c1c1c;
                 border-radius: 8px;
-                
+
                 width: 300px;
                 height: 150px;
 
@@ -787,6 +873,90 @@ export component MainWindow inherits Window {
                         clicked => { show_coordinates_popup = false; }
                     }
                 }
+            }
+        }
+    }
+
+    // Zoom overlay
+    if (show_zoomed_image): Rectangle {
+        background: #000000cc; // Semi-transparent black background
+        width: 100%;
+        height: 100%;
+        z: 2000; // Higher z-index than popup
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 20px;
+
+            Text {
+                text: zoomed_title;
+                font-size: 48px;
+                color: #ffffff;
+                horizontal-alignment: center;
+            }
+
+            TouchArea {
+                width: 1200px;
+                height: 600px;
+
+                // Map background image
+                if (has_map): Image {
+                    source: map_image;
+                    width: 100%;
+                    height: 100%;
+                    image-fit: contain;
+                    opacity: 70%;
+                }
+
+                if (image_opacity_reduction): Image {
+                    source: zoomed_image;
+                    width: 100%;
+                    height: 100%;
+                    image-fit: contain;
+                    opacity: 70%;
+                }
+
+                if (!image_opacity_reduction): Image {
+                    source: zoomed_image;
+                    width: 100%;
+                    height: 100%;
+                    image-fit: contain;
+                }
+
+                // Legend overlaid on right
+                if (has_legend): Image {
+                    source: legend;
+                    vertical-alignment: bottom;
+                    width: 100%;
+                    height: 40%;
+                    x: parent.width * 0.42;
+                    y: parent.height * 0;
+                    image-fit: contain;
+                }
+
+                // Red dot at center (coordinate location)
+                Rectangle {
+                    width: 4px;
+                    height: 4px;
+                    background: #ff0000;
+                    border-radius: 4px;
+                    x: (parent.width - 4px) / 2;
+                    y: (parent.height - 4px) / 2;
+                }
+    
+                clicked => {
+                    show_zoomed_image = false;
+                    has_map = false;
+                    has_legend = false;
+                    image_opacity_reduction = false;
+                }
+            }
+
+            Text {
+                text: "Click image to close";
+                font-size: 24px;
+                color: #cccccc;
+                horizontal-alignment: center;
             }
         }
     }

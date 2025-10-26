@@ -1000,8 +1000,8 @@ async fn update_weather_images(main_window: &MainWindow) -> Result<(), Box<dyn s
     let bbox = BoundingBox::new(lon - 8.9, lon + 8.9, lat - 5.0, lat + 5.0);
 
     // Image dimensions for 16:9 ratio
-    let width = 320;
-    let height = 180;
+    let width = 1280;
+    let height = 720;
 
     let api = GeoMetAPI::new()?;
 

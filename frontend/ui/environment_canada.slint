@@ -2,13 +2,17 @@ import { VerticalBox, Button, HorizontalBox } from "std-widgets.slint";
 
 export component EnvironmentCanadaPage inherits Rectangle {
     background: #1c1c1c;
-
+    height: 720px;
+    width: 1280px;
     in property <image> clouds_image;
     in property <image> surface_wind_image;
     in property <image> seeing_image;
     in property <image> temperature_image;
     in property <image> transparency_image;
     in property <image> relative_humidity_image;
+    in-out property <bool> show_zoomed_image: false;
+    in-out property <image> zoomed_image;
+    in-out property <string> zoomed_title;
     callback go_back();
 
     VerticalLayout {
@@ -20,6 +24,7 @@ export component EnvironmentCanadaPage inherits Rectangle {
 
         // Back button and title
         HorizontalLayout {
+            height: 40px;
             Button {
                 text: "Back";
                 clicked => { go_back(); }
@@ -35,11 +40,11 @@ export component EnvironmentCanadaPage inherits Rectangle {
 
         // Main content grid
         HorizontalLayout {
-            spacing: 10px;
+            spacing: 100px;
 
             // Column 1: Clouds and Surface Wind
             VerticalLayout {
-                spacing: 10px;
+                spacing:10px;
 
                 Text {
                     text: "Clouds";
@@ -49,11 +54,20 @@ export component EnvironmentCanadaPage inherits Rectangle {
                     height: 30px;
                 }
 
-                Image {
-                    source: clouds_image;
-                    width: 400px;
-                    height: 225px;
-                    image-fit: fill;
+                TouchArea {
+                    width: 336px;
+                    height: 280px;
+                    Image {
+                        source: clouds_image;
+                        width: 100%;
+                        height: 100%;
+                        image-fit: fill;
+                    }
+                    clicked => {
+                        zoomed_image = clouds_image;
+                        zoomed_title = "Clouds";
+                        show_zoomed_image = true;
+                    }
                 }
 
                 Text {
@@ -64,11 +78,20 @@ export component EnvironmentCanadaPage inherits Rectangle {
                     height: 30px;
                 }
 
-                Image {
-                    source: surface_wind_image;
-                    width: 400px;
-                    height: 225px;
-                    image-fit: fill;
+                TouchArea {
+                    width: 336px;
+                    height: 280px;
+                    Image {
+                        source: surface_wind_image;
+                        width: 100%;
+                        height: 100%;
+                        image-fit: fill;
+                    }
+                    clicked => {
+                        zoomed_image = surface_wind_image;
+                        zoomed_title = "Surface Wind";
+                        show_zoomed_image = true;
+                    }
                 }
             }
 
@@ -84,11 +107,20 @@ export component EnvironmentCanadaPage inherits Rectangle {
                     height: 30px;
                 }
 
-                Image {
-                    source: seeing_image;
-                    width: 400px;
-                    height: 225px;
-                    image-fit: fill;
+                TouchArea {
+                    width: 336px;
+                    height: 280px;
+                    Image {
+                        source: seeing_image;
+                        width: 100%;
+                        height: 100%;
+                        image-fit: fill;
+                    }
+                    clicked => {
+                        zoomed_image = seeing_image;
+                        zoomed_title = "Seeing";
+                        show_zoomed_image = true;
+                    }
                 }
 
                 Text {
@@ -99,11 +131,20 @@ export component EnvironmentCanadaPage inherits Rectangle {
                     height: 30px;
                 }
 
-                Image {
-                    source: temperature_image;
-                    width: 400px;
-                    height: 225px;
-                    image-fit: fill;
+                TouchArea {
+                    width: 336px;
+                    height: 280px;
+                    Image {
+                        source: temperature_image;
+                        width: 100%;
+                        height: 100%;
+                        image-fit: fill;
+                    }
+                    clicked => {
+                        zoomed_image = temperature_image;
+                        zoomed_title = "Temperature";
+                        show_zoomed_image = true;
+                    }
                 }
             }
 
@@ -119,11 +160,20 @@ export component EnvironmentCanadaPage inherits Rectangle {
                     height: 30px;
                 }
 
-                Image {
-                    source: transparency_image;
-                    width: 400px;
-                    height: 225px;
-                    image-fit: fill;
+                TouchArea {
+                    width: 336px;
+                    height: 280px;
+                    Image {
+                        source: transparency_image;
+                        width: 100%;
+                        height: 100%;
+                        image-fit: fill;
+                    }
+                    clicked => {
+                        zoomed_image = transparency_image;
+                        zoomed_title = "Transparency";
+                        show_zoomed_image = true;
+                    }
                 }
 
                 Text {
@@ -134,12 +184,61 @@ export component EnvironmentCanadaPage inherits Rectangle {
                     height: 30px;
                 }
 
-                Image {
-                    source: relative_humidity_image;
-                    width: 400px;
-                    height: 225px;
-                    image-fit: fill;
+                TouchArea {
+                    width: 336px;
+                    height: 280px;
+                    Image {
+                        source: relative_humidity_image;
+                        width: 100%;
+                        height: 100%;
+                        image-fit: fill;
+                    }
+                    clicked => {
+                        zoomed_image = relative_humidity_image;
+                        zoomed_title = "Relative Humidity";
+                        show_zoomed_image = true;
+                    }
                 }
+            }
+        }
+    }
+
+    // Zoom overlay
+    if show_zoomed_image: Rectangle {
+        background: #000000cc; // Semi-transparent black background
+        width: 100%;
+        height: 100%;
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 20px;
+
+            Text {
+                text: zoomed_title;
+                font-size: 48px;
+                color: #ffffff;
+                horizontal-alignment: center;
+            }
+
+            TouchArea {
+                width: 1200px;
+                height: 600px;
+                Image {
+                    source: zoomed_image;
+                    width: 100%;
+                    height: 100%;
+                    image-fit: contain;
+                }
+                clicked => {
+                    show_zoomed_image = false;
+                }
+            }
+
+            Text {
+                text: "Click image to close";
+                font-size: 24px;
+                color: #cccccc;
+                horizontal-alignment: center;
             }
         }
     }

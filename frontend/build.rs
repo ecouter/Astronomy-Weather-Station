@@ -8,11 +8,11 @@ fn main() {
     slint_build::compile("ui/environment_canada.slint").unwrap();
     slint_build::compile("ui/main.slint").unwrap();
 
-    // Fetch real weather data and update images
+    /*// Fetch real weather data and update images
     if let Err(e) = fetch_and_save_weather_data() {
         eprintln!("Warning: Failed to fetch weather data during build: {}", e);
         // Continue with placeholder images
-    }
+    }*/
 }
 
 fn create_placeholder_images() {
