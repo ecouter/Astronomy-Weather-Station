@@ -5,6 +5,7 @@ fn main() {
     create_placeholder_images();
 
     // Compile the SLINT UI
+    slint_build::compile("ui/environment_canada.slint").unwrap();
     slint_build::compile("ui/main.slint").unwrap();
 
     // Fetch real weather data and update images

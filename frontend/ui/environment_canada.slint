@@ -1,0 +1,146 @@
+import { VerticalBox, Button, HorizontalBox } from "std-widgets.slint";
+
+export component EnvironmentCanadaPage inherits Rectangle {
+    background: #1c1c1c;
+
+    in property <image> clouds_image;
+    in property <image> surface_wind_image;
+    in property <image> seeing_image;
+    in property <image> temperature_image;
+    in property <image> transparency_image;
+    in property <image> relative_humidity_image;
+    callback go_back();
+
+    VerticalLayout {
+        padding-left: 25px;
+        padding-right: 35px;
+        padding-top: 20px;
+        padding-bottom: 20px;
+        spacing: 10px;
+
+        // Back button and title
+        HorizontalLayout {
+            Button {
+                text: "Back";
+                clicked => { go_back(); }
+            }
+            Text {
+                text: "Environment Canada Astro predictions";
+                font-size: 36px;
+                color: #ffffff;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        // Main content grid
+        HorizontalLayout {
+            spacing: 10px;
+
+            // Column 1: Clouds and Surface Wind
+            VerticalLayout {
+                spacing: 10px;
+
+                Text {
+                    text: "Clouds";
+                    font-size: 24px;
+                    color: #ffffff;
+                    horizontal-alignment: center;
+                    height: 30px;
+                }
+
+                Image {
+                    source: clouds_image;
+                    width: 400px;
+                    height: 225px;
+                    image-fit: fill;
+                }
+
+                Text {
+                    text: "Surface Wind";
+                    font-size: 24px;
+                    color: #ffffff;
+                    horizontal-alignment: center;
+                    height: 30px;
+                }
+
+                Image {
+                    source: surface_wind_image;
+                    width: 400px;
+                    height: 225px;
+                    image-fit: fill;
+                }
+            }
+
+            // Column 2: Seeing and Temperature
+            VerticalLayout {
+                spacing: 10px;
+
+                Text {
+                    text: "Seeing";
+                    font-size: 24px;
+                    color: #ffffff;
+                    horizontal-alignment: center;
+                    height: 30px;
+                }
+
+                Image {
+                    source: seeing_image;
+                    width: 400px;
+                    height: 225px;
+                    image-fit: fill;
+                }
+
+                Text {
+                    text: "Temperature";
+                    font-size: 24px;
+                    color: #ffffff;
+                    horizontal-alignment: center;
+                    height: 30px;
+                }
+
+                Image {
+                    source: temperature_image;
+                    width: 400px;
+                    height: 225px;
+                    image-fit: fill;
+                }
+            }
+
+            // Column 3: Transparency and Relative Humidity
+            VerticalLayout {
+                spacing: 10px;
+
+                Text {
+                    text: "Transparency";
+                    font-size: 24px;
+                    color: #ffffff;
+                    horizontal-alignment: center;
+                    height: 30px;
+                }
+
+                Image {
+                    source: transparency_image;
+                    width: 400px;
+                    height: 225px;
+                    image-fit: fill;
+                }
+
+                Text {
+                    text: "Relative Humidity";
+                    font-size: 24px;
+                    color: #ffffff;
+                    horizontal-alignment: center;
+                    height: 30px;
+                }
+
+                Image {
+                    source: relative_humidity_image;
+                    width: 400px;
+                    height: 225px;
+                    image-fit: fill;
+                }
+            }
+        }
+    }
+}

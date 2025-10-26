@@ -1315,6 +1315,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "environment_canada"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "equator"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5787,6 +5799,7 @@ dependencies = [
  "cleardarksky",
  "clearoutside",
  "crc32fast",
+ "environment_canada",
  "geomet",
  "gif",
  "image 0.24.9",

@@ -1,11 +1,13 @@
 import { Button, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { EnvironmentCanadaPage } from "environment_canada.slint";
 
 export component MainWindow inherits Window {
     title: "Weather Station Frontend";
     width: 1280px;
     height: 720px;
-    preferred-width: 1200px;
-    preferred-height: 800px;
+    preferred-width: 1280px;
+    preferred-height: 720px;
+    background: #1c1c1c;
 
     in property <bool> loading;
     in property <string> error_message;
@@ -18,6 +20,9 @@ export component MainWindow inherits Window {
     in property <string> cloud_cover_counter;
     in property <image> map_image;
     in property <image> cleardarksky_image;
+    in property <image> wind_image;
+    in property <string> wind_counter;
+    in property <image> wind_legend_image;
 
     // ClearOutside condition data - arrays for each day
     in property <[string]> day0_conditions;
@@ -57,8 +62,17 @@ export component MainWindow inherits Window {
     in property <[float]> night_temp;
     in property <[int]> night_humidity;
     in property <int> current_hour_index;
+    in-out property <bool> show_coordinates_popup: false;
+    in property <string> coordinates_popup_message;
+    in property <image> env_clouds_image;
+    in property <image> env_surface_wind_image;
+    in property <image> env_seeing_image;
+    in property <image> env_temperature_image;
+    in property <image> env_transparency_image;
+    in property <image> env_relative_humidity_image;
+    in-out property <bool> show_env_canada: false;
 
-    HorizontalBox {
+    if (!show_env_canada): HorizontalBox {
         // Left side: Cloud cover prediction (top portion, 1/3 width)
         padding-left: 35px;
         VerticalBox {
@@ -511,31 +525,69 @@ export component MainWindow inherits Window {
                         }
                     }
 
-                    // Top-right: GOES-East_2km_NightMicrophysics
+                    // Top-right: Wind pressure visualization
                     Rectangle {
                         width: 50%;
 
                         if (loading) : Text {
-                            text: "Loading...";
+                            text: "Loading wind...";
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
 
-                        if (!loading && error_message == "") : Image {
-                            source: top_right_image;
+                        if (!loading && error_message == "") : Rectangle {
                             width: 100%;
                             height: 100%;
-                            image-fit: fill;
-                        }
 
-                        // Red dot at center (coordinate location)
-                        Rectangle {
-                            width: 4px;
-                            height: 4px;
-                            background: #ff0000;
-                            border-radius: 4px;
-                            x: (parent.width - 4px) / 2;
-                            y: (parent.height - 4px) / 2;
+                            // Map background image
+                            Image {
+                                source: map_image;
+                                width: 100%;
+                                height: 100%;
+                                image-fit: fill;
+                                opacity: 70%;
+                            }
+
+                            // Wind image overlay
+                            Image {
+                                source: wind_image;
+                                width: 100%;
+                                height: 100%;
+                                image-fit: fill;
+                            }
+
+                            // Legend overlaid on right
+                            Image {
+                                source: wind_legend_image;
+                                vertical-alignment: bottom;
+                                width: 100%;
+                                height: 40%;
+                                x: parent.width * 0.42;
+                                y: parent.height * 0;
+                                image-fit: contain;
+                            }
+
+                            // Red dot at center (coordinate location)
+                            Rectangle {
+                                width: 4px;
+                                height: 4px;
+                                background: #ff0000;
+                                border-radius: 4px;
+                                x: (parent.width - 4px) / 2;
+                                y: (parent.height - 4px) / 2;
+                            }
+
+                            // Counter overlay on top left
+                            Text {
+                                text: wind_counter;
+                                color: #ff0000;
+                                font-size: 24px;
+                                font-weight: 700;
+                                horizontal-alignment: left;
+                                vertical-alignment: top;
+                                x: 10px;
+                                y: 10px;
+                            }
                         }
 
                         if (!loading && error_message != "") : Text {
@@ -667,9 +719,74 @@ export component MainWindow inherits Window {
                 }
             }
 
-            // Bottom 1/3: blank for now
+            // Bottom 1/3: Environment Canada button
             Rectangle {
                 height: 267px; // 1/3 of 800
+
+                VerticalLayout {
+                    alignment: center;
+
+                    Button {
+                        text: "Environment Canada Forecasts";
+                        clicked => { show_env_canada = true; }
+                    }
+                }
+            }
+        }
+    }
+
+    if (show_env_canada): EnvironmentCanadaPage {
+        clouds_image: env_clouds_image;
+        surface_wind_image: env_surface_wind_image;
+        seeing_image: env_seeing_image;
+        temperature_image: env_temperature_image;
+        transparency_image: env_transparency_image;
+        relative_humidity_image: env_relative_humidity_image;
+        go_back => { show_env_canada = false; }
+    }
+
+    // Coordinates error popup
+    if (show_coordinates_popup): Rectangle {
+        background: rgba(0, 0, 0, 0.5);
+        width: 100%;
+        height: 100%;
+        z: 1000;
+
+        VerticalLayout {
+            alignment: center;
+            padding-left: 480px;
+
+            Rectangle {
+                background: #1c1c1c;
+                border-radius: 8px;
+                
+                width: 300px;
+                height: 150px;
+
+                VerticalLayout {
+                    alignment: center;
+
+                    Text {
+                        text: "Coordinates Error";
+                        font-size: 16px;
+                        horizontal-alignment: center;
+                        font-weight: 700;
+                        color: white;
+                    }
+
+                    Text {
+                        text: coordinates_popup_message;
+                        color: white;
+                        wrap: word-wrap;
+                        height: 50px;
+                        horizontal-alignment: center;
+                    }
+
+                    Button {
+                        text: "OK";
+                        clicked => { show_coordinates_popup = false; }
+                    }
+                }
             }
         }
     }

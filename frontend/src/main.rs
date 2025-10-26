@@ -6,7 +6,24 @@ use std::sync::mpsc;
 use std::sync::Mutex;
 use std::rc::Rc;
 use once_cell::sync::Lazy;
-use chrono::Timelike;
+use chrono::{Timelike, Datelike};
+
+fn load_coordinates(main_window: &MainWindow) -> Result<(f64, f64), Box<dyn std::error::Error>> {
+    match std::fs::read_to_string("../coordinates.json") {
+        Ok(content) => {
+            let coords: serde_json::Value = serde_json::from_str(&content)?;
+            let lat: f64 = coords["lat"].as_str().unwrap().parse()?;
+            let lon: f64 = coords["lon"].as_str().unwrap().parse()?;
+            Ok((lat, lon))
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            main_window.set_show_coordinates_popup(true);
+            main_window.set_coordinates_popup_message("coordinates.json file not found. Please ensure the file exists in the parent directory.".into());
+            Err(e.into())
+        }
+        Err(e) => Err(e.into())
+    }
+}
 
 fn main() -> Result<(), slint::PlatformError> {
     println!("Starting weather station frontend...");
@@ -26,7 +43,11 @@ fn main() -> Result<(), slint::PlatformError> {
             eprintln!("Failed to load initial cloud cover images: {}", e);
             main_window.set_error_message(format!("Failed to load cloud cover images: {}", e).into());
         }
-        match load_map_image().await {
+        if let Err(e) = update_wind_images(&main_window).await {
+            eprintln!("Failed to load initial wind images: {}", e);
+            main_window.set_error_message(format!("Failed to load wind images: {}", e).into());
+        }
+        match load_map_image(&main_window).await {
             Ok(map_image) => {
                 main_window.set_map_image(map_image);
             }
@@ -35,7 +56,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 main_window.set_error_message(format!("Failed to load map image: {}", e).into());
             }
         }
-        match load_cleardarksky_image().await {
+        match load_cleardarksky_image(&main_window).await {
             Ok(cleardarksky_image) => {
                 main_window.set_cleardarksky_image(cleardarksky_image);
             }
@@ -48,10 +69,22 @@ fn main() -> Result<(), slint::PlatformError> {
 
     main_window.set_loading(false);
 
+    // Load initial Environment Canada images
+    {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            if let Err(e) = update_environment_canada_images(&main_window).await {
+                eprintln!("Failed to load Environment Canada images: {}", e);
+            }
+        });
+    }
+
     // Channel for communication between background thread and UI thread
     let (tx, rx) = mpsc::channel();
     // Channel for cloud cover cycling
     let (cloud_tx, cloud_rx) = mpsc::channel();
+    // Channel for wind cycling
+    let (wind_tx, wind_rx) = mpsc::channel();
 
     // Spawn background thread for periodic weather updates
     thread::spawn(move || {
@@ -104,6 +137,7 @@ fn main() -> Result<(), slint::PlatformError> {
     });
 
     // Spawn background thread for cloud cover cycling (every 2 seconds)
+    let cloud_tx_cycle = cloud_tx.clone();
     thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
         println!("Cloud cover cycling thread started");
@@ -113,7 +147,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 interval.tick().await;
                 println!("Sending cycle signal");
                 // Signal the UI thread to cycle cloud cover display
-                if cloud_tx.send("cycle").is_err() {
+                if cloud_tx_cycle.send("cycle").is_err() {
                     println!("Failed to send cycle signal, UI thread may have shut down");
                     // UI thread has shut down
                     break;
@@ -121,6 +155,60 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         });
         println!("Cloud cover cycling thread ended");
+    });
+
+    // Spawn background thread for wind updates (hourly)
+    let wind_tx_clone = wind_tx.clone();
+    thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let mut interval = tokio::time::interval(Duration::from_secs(3600)); // 1 hour
+            loop {
+                interval.tick().await;
+                // Signal the UI thread to update wind images
+                if wind_tx_clone.send("update").is_err() {
+                    // UI thread has shut down
+                    break;
+                }
+            }
+        });
+    });
+
+    // Spawn background thread for wind cycling (every 2 seconds)
+    thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        println!("Wind cycling thread started");
+        rt.block_on(async {
+            let mut interval = tokio::time::interval(Duration::from_secs(2)); // 2 seconds
+            loop {
+                interval.tick().await;
+                println!("Sending wind cycle signal");
+                // Signal the UI thread to cycle wind display
+                if wind_tx.send("cycle").is_err() {
+                    println!("Failed to send wind cycle signal, UI thread may have shut down");
+                    // UI thread has shut down
+                    break;
+                }
+            }
+        });
+        println!("Wind cycling thread ended");
+    });
+
+    // Spawn background thread for Environment Canada updates (hourly)
+    let env_canada_tx = cloud_tx.clone(); // Reuse channel for simplicity
+    thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let mut interval = tokio::time::interval(Duration::from_secs(3600)); // 1 hour
+            loop {
+                interval.tick().await;
+                // Signal the UI thread to update Environment Canada images
+                if env_canada_tx.send("env_canada_update").is_err() {
+                    // UI thread has shut down
+                    break;
+                }
+            }
+        });
     });
 
     // Handle cloud cover updates directly in the main thread using invoke_from_event_loop
@@ -145,7 +233,7 @@ fn main() -> Result<(), slint::PlatformError> {
                                     window.set_error_message(format!("Failed to update cloud cover images: {}", e).into());
                                 }
                                 // Also update ClearDarkSky chart
-                                match load_cleardarksky_image().await {
+                                match load_cleardarksky_image(&window).await {
                                     Ok(cleardarksky_image) => {
                                         window.set_cleardarksky_image(cleardarksky_image);
                                         println!("Updated ClearDarkSky chart");
@@ -175,6 +263,21 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                     }).unwrap();
                 }
+                "env_canada_update" => {
+                    println!("Processing Environment Canada update signal");
+                    // Use invoke_from_event_loop to run async code in the UI thread
+                    slint::invoke_from_event_loop(move || {
+                        let rt = tokio::runtime::Runtime::new().unwrap();
+                        let window = window_weak.upgrade();
+                        if let Some(window) = window {
+                            rt.block_on(async {
+                                if let Err(e) = update_environment_canada_images(&window).await {
+                                    eprintln!("Failed to update Environment Canada images: {}", e);
+                                }
+                            });
+                        }
+                    }).unwrap();
+                }
                 "cycle" => {
                     println!("Processing cloud cycle signal");
                     // Use invoke_from_event_loop to update UI in the UI thread
@@ -191,6 +294,49 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         }
         println!("Cloud cover update thread ended");
+    });
+
+    // Handle wind updates directly in the main thread using invoke_from_event_loop
+    let main_window_weak2 = main_window.as_weak();
+    let _wind_update_handle = thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        println!("Wind update thread started");
+        while let Ok(signal) = wind_rx.recv() {
+            println!("Received wind signal: {}", signal);
+            let window_weak = main_window_weak2.clone();
+            match signal {
+                "update" => {
+                    println!("Processing wind update signal");
+                    // Use invoke_from_event_loop to run async code in the UI thread
+                    slint::invoke_from_event_loop(move || {
+                        let rt = tokio::runtime::Runtime::new().unwrap();
+                        let window = window_weak.upgrade();
+                        if let Some(window) = window {
+                            rt.block_on(async {
+                                if let Err(e) = update_wind_images(&window).await {
+                                    eprintln!("Failed to update wind images: {}", e);
+                                    window.set_error_message(format!("Failed to update wind images: {}", e).into());
+                                }
+                            });
+                        }
+                    }).unwrap();
+                }
+                "cycle" => {
+                    println!("Processing wind cycle signal");
+                    // Use invoke_from_event_loop to update UI in the UI thread
+                    slint::invoke_from_event_loop(move || {
+                        let window = window_weak.upgrade();
+                        if let Some(window) = window {
+                            update_wind_display(&window);
+                        }
+                    }).unwrap();
+                }
+                _ => {
+                    println!("Unknown wind signal: {}", signal);
+                }
+            }
+        }
+        println!("Wind update thread ended");
     });
 
     // Keep the main window alive by storing it
@@ -226,6 +372,59 @@ fn main() -> Result<(), slint::PlatformError> {
     result
 }
 
+async fn update_environment_canada_images(main_window: &MainWindow) -> Result<(), Box<dyn std::error::Error>> {
+    use environment_canada::{EnvironmentCanadaAPI, ForecastType, Region};
+    use chrono::{Utc, Timelike};
+
+    println!("Updating Environment Canada images...");
+
+    // Calculate latest available model run (accounting for cascading availability)
+    // Environment Canada has cascading availability: 06 UTC only available when 12 UTC is available,
+    // and 12 UTC only available when 18 UTC is run. Use current_hour - 6 to ensure availability.
+    let now = Utc::now();
+    let current_hour = now.hour();
+    let model_runs = [0, 6, 12, 18];
+    let latest_run = model_runs.iter()
+        .rev()
+        .find(|&&run| run <= current_hour.saturating_sub(6))
+        .unwrap_or(&18); // fallback to 18 if before 00
+
+    let model_run_str = format!("{:04}{:02}{:02}{:02}", now.year(), now.month() as u32, now.day() as u32, *latest_run);
+
+    println!("Using latest available model run: {} (accounting for cascading availability)", model_run_str);
+
+    // Create API instance
+    let api = EnvironmentCanadaAPI::new()?;
+
+    // Fetch images concurrently
+    let (clouds_data, surface_wind_data, seeing_data, temperature_data, transparency_data, relative_humidity_data) = tokio::try_join!(
+        api.fetch_forecast(ForecastType::Cloud, &model_run_str, Region::Northeast, 1),
+        api.fetch_forecast(ForecastType::SurfaceWind, &model_run_str, Region::Northeast, 1),
+        api.fetch_forecast(ForecastType::Seeing, &model_run_str, Region::Northeast, 3),
+        api.fetch_forecast(ForecastType::Temperature, &model_run_str, Region::Northeast, 1),
+        api.fetch_forecast(ForecastType::Transparency, &model_run_str, Region::Northeast, 1),
+        api.fetch_forecast(ForecastType::RelativeHumidity, &model_run_str, Region::Northeast, 1)
+    )?;
+
+    // Decode and set images
+    let clouds_image = decode_png_to_slint_image(&clouds_data)?;
+    let surface_wind_image = decode_png_to_slint_image(&surface_wind_data)?;
+    let seeing_image = decode_png_to_slint_image(&seeing_data)?;
+    let temperature_image = decode_png_to_slint_image(&temperature_data)?;
+    let transparency_image = decode_png_to_slint_image(&transparency_data)?;
+    let relative_humidity_image = decode_png_to_slint_image(&relative_humidity_data)?;
+
+    main_window.set_env_clouds_image(clouds_image);
+    main_window.set_env_surface_wind_image(surface_wind_image);
+    main_window.set_env_seeing_image(seeing_image);
+    main_window.set_env_temperature_image(temperature_image);
+    main_window.set_env_transparency_image(transparency_image);
+    main_window.set_env_relative_humidity_image(relative_humidity_image);
+
+    println!("Environment Canada images updated successfully");
+    Ok(())
+}
+
 fn decode_png_to_slint_image(png_data: &[u8]) -> Result<slint::Image, Box<dyn std::error::Error>> {
     use image::ImageFormat;
 
@@ -251,10 +450,7 @@ async fn update_clearoutside_data(main_window: &MainWindow) -> Result<(), Box<dy
     use clearoutside::ClearOutsideAPI;
 
     // Load coordinates
-    let coords_content = std::fs::read_to_string("../coordinates.json")?;
-    let coords: serde_json::Value = serde_json::from_str(&coords_content)?;
-    let lat: f64 = coords["lat"].as_str().unwrap().parse()?;
-    let lon: f64 = coords["lon"].as_str().unwrap().parse()?;
+    let (lat, lon) = load_coordinates(main_window)?;
 
     // Format coordinates for ClearOutside (lat.lon with 2 decimals)
     let lat_str = format!("{:.2}", lat);
@@ -283,10 +479,7 @@ async fn update_meteoblue_data(main_window: &MainWindow, clearoutside_forecast: 
     use meteoblue::fetch_meteoblue_data;
 
     // Load coordinates
-    let coords_content = std::fs::read_to_string("../coordinates.json")?;
-    let coords: serde_json::Value = serde_json::from_str(&coords_content)?;
-    let lat: f64 = coords["lat"].as_str().unwrap().parse()?;
-    let lon: f64 = coords["lon"].as_str().unwrap().parse()?;
+    let (lat, lon) = load_coordinates(main_window)?;
 
     // Fetch meteoblue data
     let meteoblue_data = fetch_meteoblue_data(lat, lon).await?;
@@ -620,7 +813,7 @@ fn update_meteoblue_display(main_window: &MainWindow, night_data: Vec<MeteoBlueN
     // Get current hour for highlighting (convert to local time for the location)
     // Coordinates are in Eastern Time Zone (UTC-4), so convert UTC to local
     let utc_now = chrono::Utc::now();
-    let eastern_offset = chrono::FixedOffset::west(4 * 3600); // UTC-4
+    let eastern_offset = chrono::FixedOffset::west_opt(4 * 3600).unwrap(); // UTC-4
     let local_time = utc_now.with_timezone(&eastern_offset);
     let current_hour = local_time.hour() as i32;
     let mut current_hour_index = -1;
@@ -714,16 +907,13 @@ fn decode_gif_to_slint_image(gif_data: &[u8]) -> Result<slint::Image, Box<dyn st
     }
 }
 
-async fn load_cleardarksky_image() -> Result<slint::Image, Box<dyn std::error::Error>> {
+async fn load_cleardarksky_image(main_window: &MainWindow) -> Result<slint::Image, Box<dyn std::error::Error>> {
     use cleardarksky::ClearDarkSkyAPI;
 
     println!("Loading ClearDarkSky image...");
 
-    // Load coordinates
-    let coords_content = std::fs::read_to_string("../coordinates.json")?;
-    let coords: serde_json::Value = serde_json::from_str(&coords_content)?;
-    let lat: f64 = coords["lat"].as_str().unwrap().parse()?;
-    let lon: f64 = coords["lon"].as_str().unwrap().parse()?;
+    // Load coordinates - this will show popup if file not found
+    let (lat, lon) = load_coordinates(main_window)?;
 
     // Create API client
     let api = ClearDarkSkyAPI::new();
@@ -790,10 +980,7 @@ async fn update_weather_images(main_window: &MainWindow) -> Result<(), Box<dyn s
     println!("Updating weather images...");
 
     // Load coordinates
-    let coords_content = std::fs::read_to_string("../coordinates.json")?;
-    let coords: serde_json::Value = serde_json::from_str(&coords_content)?;
-    let lat: f64 = coords["lat"].as_str().unwrap().parse()?;
-    let lon: f64 = coords["lon"].as_str().unwrap().parse()?;
+    let (lat, lon) = load_coordinates(main_window)?;
 
     // Calculate current UTC time for different data types
     let now = Utc::now();
@@ -855,6 +1042,11 @@ async fn update_weather_images(main_window: &MainWindow) -> Result<(), Box<dyn s
 static CLOUD_COVER_IMAGES: Lazy<Mutex<Vec<Vec<u8>>>> = Lazy::new(|| Mutex::new(Vec::new()));
 static CLOUD_COVER_INDEX: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::new(0));
 
+// Global storage for wind images, legend, and current index
+static WIND_IMAGES: Lazy<Mutex<Vec<Vec<u8>>>> = Lazy::new(|| Mutex::new(Vec::new()));
+static WIND_LEGEND: Lazy<Mutex<Vec<u8>>> = Lazy::new(|| Mutex::new(Vec::new()));
+static WIND_INDEX: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::new(0));
+
 async fn update_cloud_cover_images(main_window: &MainWindow) -> Result<(), Box<dyn std::error::Error>> {
     use geomet::{GeoMetAPI, BoundingBox};
     use chrono::{Utc, Duration};
@@ -862,10 +1054,7 @@ async fn update_cloud_cover_images(main_window: &MainWindow) -> Result<(), Box<d
     println!("Updating cloud cover images...");
 
     // Load coordinates
-    let coords_content = std::fs::read_to_string("../coordinates.json")?;
-    let coords: serde_json::Value = serde_json::from_str(&coords_content)?;
-    let lat: f64 = coords["lat"].as_str().unwrap().parse()?;
-    let lon: f64 = coords["lon"].as_str().unwrap().parse()?;
+    let (lat, lon) = load_coordinates(main_window)?;
 
     // Calculate current UTC time, round to next hour for forecast
     let now = Utc::now();
@@ -932,6 +1121,101 @@ async fn update_cloud_cover_images(main_window: &MainWindow) -> Result<(), Box<d
     Ok(())
 }
 
+async fn update_wind_images(main_window: &MainWindow) -> Result<(), Box<dyn std::error::Error>> {
+    use geomet::{GeoMetAPI, BoundingBox};
+    use chrono::{Utc, Duration};
+
+    println!("Updating wind images...");
+
+    // Load coordinates
+    let (lat, lon) = load_coordinates(main_window)?;
+
+    // Calculate current UTC time, round to nearest hour for forecast
+    let now = Utc::now();
+    let hrdps_time = now.with_minute(0).unwrap().with_second(0).unwrap().with_nanosecond(0).unwrap();
+    let hrdps_time_str = hrdps_time.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    // Bounding box: ~5° radius around coordinates
+    let bbox = BoundingBox::new(lon - 8.9, lon + 8.9, lat - 5.0, lat + 5.0);
+
+    // Image dimensions for wind (16:9 ratio)
+    let width = 1280;
+    let height = 720;
+
+    let api = GeoMetAPI::new()?;
+
+    // Pressure levels
+    let pressures = vec![100, 200, 300, 400, 500, 600, 700, 800, 900, 925, 950, 970, 985, 1000, 1015];
+
+    // Fetch wind images concurrently
+    let mut image_tasks = Vec::new();
+    for &pressure in &pressures {
+        let time_str = hrdps_time_str.clone();
+        let bbox_clone = bbox.clone();
+        let layer_name = format!("HRDPS.CONTINENTAL.PRES_UU.{}", pressure);
+        let task = tokio::spawn(async move {
+            let api_instance = GeoMetAPI::new().unwrap();
+            match api_instance.get_wms_image(&layer_name, &time_str, bbox_clone, width, height).await {
+                Ok(data) => Some(data),
+                Err(e) => {
+                    eprintln!("Failed to fetch wind image for {} mb: {}", pressure, e);
+                    None
+                }
+            }
+        });
+        image_tasks.push(task);
+    }
+
+    // Fetch single legend
+    let legend_task = tokio::spawn(async move {
+        let api_instance = GeoMetAPI::new().unwrap();
+        match api_instance.get_legend_graphic("HRDPS.CONTINENTAL.PRES_UU.1000", Some("WINDARROWKMH"), "image/png", Some("en")).await {
+            Ok(data) => Some(data),
+            Err(e) => {
+                eprintln!("Failed to fetch wind legend: {}", e);
+                None
+            }
+        }
+    });
+
+    // Wait for all image tasks
+    let mut wind_images = Vec::new();
+    for task in image_tasks {
+        if let Ok(Some(data)) = task.await {
+            wind_images.push(data);
+        }
+    }
+
+    // Wait for legend task
+    let legend_data = if let Ok(Some(data)) = legend_task.await {
+        Some(data)
+    } else {
+        None
+    };
+
+    // Update global storage
+    {
+        let mut images = WIND_IMAGES.lock().unwrap();
+        *images = wind_images;
+    }
+    if let Some(legend) = legend_data {
+        let mut legend_store = WIND_LEGEND.lock().unwrap();
+        *legend_store = legend;
+    }
+
+    // Reset index to 0
+    {
+        let mut index = WIND_INDEX.lock().unwrap();
+        *index = 0;
+    }
+
+    // Update UI with first image
+    update_wind_display(main_window);
+
+    println!("Wind images updated successfully ({} images, {} legend)", WIND_IMAGES.lock().unwrap().len(), if WIND_LEGEND.lock().unwrap().is_empty() { 0 } else { 1 });
+    Ok(())
+}
+
 fn update_cloud_cover_display(main_window: &MainWindow) {
     let images = CLOUD_COVER_IMAGES.lock().unwrap();
     let mut index = CLOUD_COVER_INDEX.lock().unwrap();
@@ -961,16 +1245,55 @@ fn update_cloud_cover_display(main_window: &MainWindow) {
     }
 }
 
-async fn load_map_image() -> Result<slint::Image, Box<dyn std::error::Error>> {
+fn update_wind_display(main_window: &MainWindow) {
+    let images = WIND_IMAGES.lock().unwrap();
+    let legend = WIND_LEGEND.lock().unwrap();
+    let mut index = WIND_INDEX.lock().unwrap();
+
+    if !images.is_empty() {
+        let current_image_data = &images[*index];
+        let pressures = vec![100, 200, 300, 400, 500, 600, 700, 800, 900, 925, 950, 970, 985, 1000, 1015];
+        let pressure = pressures[*index];
+        let counter_text = format!("{} mb", pressure);
+
+        println!("Displaying wind image: {} (index: {})", counter_text, *index);
+
+        // Decode the PNG data to Slint image
+        match decode_png_to_slint_image(current_image_data) {
+            Ok(slint_image) => {
+                main_window.set_wind_image(slint_image);
+                main_window.set_wind_counter(counter_text.into());
+                if !legend.is_empty() {
+                    match decode_png_to_slint_image(&legend) {
+                        Ok(legend_image) => {
+                            main_window.set_wind_legend_image(legend_image);
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to decode wind legend: {}", e);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to decode wind image: {}", e);
+            }
+        }
+
+        // Cycle to next image
+        *index = (*index + 1) % images.len();
+        println!("Next wind index will be: {}", *index);
+    } else {
+        println!("No wind images available for display");
+    }
+}
+
+async fn load_map_image(main_window: &MainWindow) -> Result<slint::Image, Box<dyn std::error::Error>> {
     use openstreetmap::OpenStreetMapAPI;
 
     println!("Loading map image...");
 
     // Load coordinates
-    let coords_content = std::fs::read_to_string("../coordinates.json")?;
-    let coords: serde_json::Value = serde_json::from_str(&coords_content)?;
-    let lat: f64 = coords["lat"].as_str().unwrap().parse()?;
-    let lon: f64 = coords["lon"].as_str().unwrap().parse()?;
+    let (lat, lon) = load_coordinates(main_window)?;
 
     // Create filename based on coordinates
     let filename = format!("{}_{}.png", lat, lon);
