@@ -770,7 +770,7 @@ export component MainWindow inherits Window {
                         }
                     }
                 }
-                // Bottom portion (40% of left side) - available for future use
+                // Bottom portion (40% of left side
                 // Bottom section: ClearDarkSky chart
                 TouchArea {
                     width: 100%;
@@ -807,14 +807,23 @@ export component MainWindow inherits Window {
 
             // Bottom 1/3: Environment Canada button
             Rectangle {
-                height: 267px; // 1/3 of 800
+                height: 290px; // 1/3 of 800
 
                 VerticalLayout {
                     alignment: center;
 
-                    Button {
-                        text: "Environment Canada Forecasts";
-                        clicked => { show_env_canada = true; }
+                    HorizontalBox {
+                        alignment: center;
+
+                        Rectangle {
+                            width: 500px;
+                        }
+
+                        Button {
+                            width: 300px;
+                            text: "Environment Canada Forecasts";
+                            clicked => { show_env_canada = true; }
+                        }
                     }
                 }
             }
@@ -887,12 +896,23 @@ export component MainWindow inherits Window {
         VerticalLayout {
             alignment: center;
             spacing: 20px;
+            padding-left: 40px;
 
-            Text {
-                text: zoomed_title;
-                font-size: 48px;
-                color: #ffffff;
-                horizontal-alignment: center;
+            HorizontalLayout {
+                Text {
+                    text: zoomed_title;
+                    font-size: 48px;
+                    color: #ffffff;
+                    horizontal-alignment: center;
+                }
+
+                Text {
+                    text: "Click image to close";
+                    font-size: 24px;
+                    vertical-alignment: center;
+                    color: #ff0000;
+                    horizontal-alignment: center;
+                }
             }
 
             TouchArea {

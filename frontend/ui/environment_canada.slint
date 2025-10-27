@@ -212,12 +212,23 @@ export component EnvironmentCanadaPage inherits Rectangle {
         VerticalLayout {
             alignment: center;
             spacing: 20px;
+            padding-left: 40px;
 
-            Text {
-                text: zoomed_title;
-                font-size: 48px;
-                color: #ffffff;
-                horizontal-alignment: center;
+            HorizontalLayout {
+                Text {
+                    text: zoomed_title;
+                    font-size: 48px;
+                    color: #ffffff;
+                    horizontal-alignment: center;
+                }
+
+                Text {
+                    text: "Click image to close";
+                    font-size: 24px;
+                    vertical-alignment: center;
+                    color: #ff0000;
+                    horizontal-alignment: center;
+                }
             }
 
             TouchArea {
