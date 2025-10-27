@@ -374,22 +374,27 @@ fn main() -> Result<(), slint::PlatformError> {
 
 async fn update_environment_canada_images(main_window: &MainWindow) -> Result<(), Box<dyn std::error::Error>> {
     use environment_canada::{EnvironmentCanadaAPI, ForecastType, Region};
-    use chrono::{Utc, Timelike};
+    use chrono::{Utc, Timelike, Duration};
 
     println!("Updating Environment Canada images...");
 
     // Calculate latest available model run (accounting for cascading availability)
     // Environment Canada has cascading availability: 06 UTC only available when 12 UTC is available,
     // and 12 UTC only available when 18 UTC is run. Use current_hour - 6 to ensure availability.
+    // Special case: if before 06 UTC, use yesterday's 18 UTC run since current day's runs aren't available yet.
     let now = Utc::now();
-    let current_hour = now.hour();
-    let model_runs = [0, 6, 12, 18];
-    let latest_run = model_runs.iter()
-        .rev()
-        .find(|&&run| run <= current_hour.saturating_sub(6))
-        .unwrap_or(&18); // fallback to 18 if before 00
-
-    let model_run_str = format!("{:04}{:02}{:02}{:02}", now.year(), now.month() as u32, now.day() as u32, *latest_run);
+    let model_run_str = if now.hour() < 6 {
+        let yesterday = now - chrono::Duration::days(1);
+        format!("{:04}{:02}{:02}18", yesterday.year(), yesterday.month() as u32, yesterday.day() as u32)
+    } else {
+        let current_hour = now.hour();
+        let model_runs = [0, 6, 12, 18];
+        let latest_run = model_runs.iter()
+            .rev()
+            .find(|&&run| run <= current_hour.saturating_sub(6))
+            .unwrap_or(&18);
+        format!("{:04}{:02}{:02}{:02}", now.year(), now.month() as u32, now.day() as u32, *latest_run)
+    };
 
     println!("Using latest available model run: {} (accounting for cascading availability)", model_run_str);
 
