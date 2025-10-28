@@ -51,8 +51,8 @@ impl OpenStreetMapAPI {
     pub async fn download_tiles(&self, bbox: (f64, f64, f64, f64), zoom: u32) -> Result<Vec<Vec<DynamicImage>>, anyhow::Error> {
         let (lat_min, lon_min, lat_max, lon_max) = bbox;
 
-        let (x0, y0) = Self::lat_lon_to_tile(lat_min, lon_min, zoom);
-        let (x1, y1) = Self::lat_lon_to_tile(lat_max, lon_max, zoom);
+        let (x0, y0) = Self::lat_lon_to_tile(lat_max, lon_min, zoom);
+        let (x1, y1) = Self::lat_lon_to_tile(lat_min, lon_max, zoom);
 
         let x_start = x0.min(x1);
         let x_end = x0.max(x1);
@@ -130,12 +130,12 @@ impl OpenStreetMapAPI {
         let y_bottom = Self::lat_lon_to_pixel(lat_min, lon_min, zoom).1; // southern edge
 
         // Get tile coordinates of the top-left tile (northernmost, westernmost)
-        let tile_x_min = Self::lat_lon_to_tile(lat_min, lon_min, zoom).0; // western tile
-        let tile_y_min = Self::lat_lon_to_tile(lat_max, lon_max, zoom).1; // northern tile
+        let tile_x_min = Self::lat_lon_to_tile(lat_max, lon_min, zoom).0; // western tile
+        let tile_y_min = Self::lat_lon_to_tile(lat_max, lon_min, zoom).1; // northern tile
 
         // Pixel offset within the stitched image
-        let offset_x = x_left - (tile_x_min as f64 * 256.0);
-        let offset_y = y_top - (tile_y_min as f64 * 256.0);
+        let offset_x = Self::lat_lon_to_pixel(lat_max, lon_min, zoom).0 - (tile_x_min as f64 * 256.0);
+        let offset_y = Self::lat_lon_to_pixel(lat_max, lon_min, zoom).1 - (tile_y_min as f64 * 256.0);
 
         // Width and height in pixels
         let width_px = (x_right - x_left).max(1.0) as u32;

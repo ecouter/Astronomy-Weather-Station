@@ -1,0 +1,425 @@
+import { VerticalBox, Button, HorizontalBox } from "std-widgets.slint";
+
+export component NinaPage inherits Rectangle {
+    background: #1c1c1c;
+    height: 720px;
+    width: 1280px;
+    in property <image> image1;
+    in property <image> image2;
+    in property <image> image3;
+    in property <image> image4;
+    in property <image> image5;
+    in property <image> image6;
+    in-out property <string> url1;
+    in-out property <string> url2;
+    in-out property <string> url3;
+    in-out property <string> url4;
+    in-out property <string> url5;
+    in-out property <string> url6;
+    in-out property <bool> show_zoomed_image: false;
+    in-out property <image> zoomed_image;
+    in-out property <string> zoomed_title;
+    in-out property <bool> show_url_popup: false;
+    in-out property <string> current_url: "";
+    in-out property <int> current_image_index: 0;
+    in-out property <string> url_change: "";
+    in-out property <int> url_index: -1;
+    callback go_back();
+    callback url_saved(int);
+
+    VerticalLayout {
+        padding-left: 25px;
+        padding-right: 35px;
+        padding-top: 20px;
+        padding-bottom: 20px;
+        spacing: 10px;
+
+        // Back button and title
+        HorizontalLayout {
+            height: 40px;
+            Button {
+                text: "Back";
+                clicked => { go_back(); }
+            }
+            Text {
+                text: "Nina Sessions";
+                font-size: 36px;
+                color: #ffffff;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                font-family: "Saira Semi Condensed";
+            }
+        }
+
+        // Main content grid - 2 rows, 3 columns
+        VerticalLayout {
+            spacing: 10px;
+
+            // Top row
+            HorizontalLayout {
+                spacing: 10px;
+
+                // Image 1
+                TouchArea {
+                    width: 400px;
+                    height: 300px;
+                    Rectangle {
+                        width: 100%;
+                        height: 100%;
+                        background: #B1B2B5FF;
+
+                        if (image1.width > 0 && image1.height > 0): Image {
+                            source: image1;
+                            width: 100%;
+                            height: 100%;
+                            image-fit: contain;
+                        }
+
+                        if !(image1.width > 0 && image1.height > 0): Text {
+                            text: "1";
+                            color: #000000;
+                            font-size: 48px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                    clicked => {
+                        if (image1.width > 0 && image1.height > 0) {
+                            zoomed_image = image1;
+                            zoomed_title = "Nina Session 1";
+                            show_zoomed_image = true;
+                        } else {
+                            current_url = url1;
+                            current_image_index = 0;
+                            show_url_popup = true;
+                        }
+                    }
+                }
+
+                // Image 2
+                TouchArea {
+                    width: 400px;
+                    height: 300px;
+                    Rectangle {
+                        width: 100%;
+                        height: 100%;
+                        background: #B1B2B5FF;
+
+                        if (image2.width > 0 && image2.height > 0): Image {
+                            source: image2;
+                            width: 100%;
+                            height: 100%;
+                            image-fit: contain;
+                        }
+
+                        if !(image2.width > 0 && image2.height > 0): Text {
+                            text: "2";
+                            color: #000000;
+                            font-size: 48px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                    clicked => {
+                        if (image2.width > 0 && image2.height > 0) {
+                            zoomed_image = image2;
+                            zoomed_title = "Nina Session 2";
+                            show_zoomed_image = true;
+                        } else {
+                            current_url = url2;
+                            current_image_index = 1;
+                            show_url_popup = true;
+                        }
+                    }
+                }
+
+                // Image 3
+                TouchArea {
+                    width: 400px;
+                    height: 300px;
+                    Rectangle {
+                        width: 100%;
+                        height: 100%;
+                        background: #B1B2B5FF;
+
+                        if (image3.width > 0 && image3.height > 0): Image {
+                            source: image3;
+                            width: 100%;
+                            height: 100%;
+                            image-fit: contain;
+                        }
+
+                        if !(image3.width > 0 && image3.height > 0): Text {
+                            text: "3";
+                            color: #000000;
+                            font-size: 48px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                    clicked => {
+                        if (image3.width > 0 && image3.height > 0) {
+                            zoomed_image = image3;
+                            zoomed_title = "Nina Session 3";
+                            show_zoomed_image = true;
+                        } else {
+                            current_url = url3;
+                            current_image_index = 2;
+                            show_url_popup = true;
+                        }
+                    }
+                }
+            }
+
+            // Bottom row
+            HorizontalLayout {
+                spacing: 10px;
+
+                // Image 4
+                TouchArea {
+                    width: 400px;
+                    height: 300px;
+                    Rectangle {
+                        width: 100%;
+                        height: 100%;
+                        background: #B1B2B5FF;
+
+                        if (image4.width > 0 && image4.height > 0): Image {
+                            source: image4;
+                            width: 100%;
+                            height: 100%;
+                            image-fit: contain;
+                        }
+
+                        if !(image4.width > 0 && image4.height > 0): Text {
+                            text: "4";
+                            color: #000000;
+                            font-size: 48px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                    clicked => {
+                        if (image4.width > 0 && image4.height > 0) {
+                            zoomed_image = image4;
+                            zoomed_title = "Nina Session 4";
+                            show_zoomed_image = true;
+                        } else {
+                            current_url = url4;
+                            current_image_index = 3;
+                            show_url_popup = true;
+                        }
+                    }
+                }
+
+                // Image 5
+                TouchArea {
+                    width: 400px;
+                    height: 300px;
+                    Rectangle {
+                        width: 100%;
+                        height: 100%;
+                        background: #B1B2B5FF;
+
+                        if (image5.width > 0 && image5.height > 0): Image {
+                            source: image5;
+                            width: 100%;
+                            height: 100%;
+                            image-fit: contain;
+                        }
+
+                        if !(image5.width > 0 && image5.height > 0): Text {
+                            text: "5";
+                            color: #000000;
+                            font-size: 48px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                    clicked => {
+                        if (image5.width > 0 && image5.height > 0) {
+                            zoomed_image = image5;
+                            zoomed_title = "Nina Session 5";
+                            show_zoomed_image = true;
+                        } else {
+                            current_url = url5;
+                            current_image_index = 4;
+                            show_url_popup = true;
+                        }
+                    }
+                }
+
+                // Image 6
+                TouchArea {
+                    width: 400px;
+                    height: 300px;
+                    Rectangle {
+                        width: 100%;
+                        height: 100%;
+                        background: #B1B2B5FF;
+
+                        if (image6.width > 0 && image6.height > 0): Image {
+                            source: image6;
+                            width: 100%;
+                            height: 100%;
+                            image-fit: contain;
+                        }
+
+                        if !(image6.width > 0 && image6.height > 0): Text {
+                            text: "6";
+                            color: #000000;
+                            font-size: 48px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                    clicked => {
+                        if (image6.width > 0 && image6.height > 0) {
+                            zoomed_image = image6;
+                            zoomed_title = "Nina Session 6";
+                            show_zoomed_image = true;
+                        } else {
+                            current_url = url6;
+                            current_image_index = 5;
+                            show_url_popup = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Zoom overlay
+    if show_zoomed_image: Rectangle {
+        background: #000000cc; // Semi-transparent black background
+        width: 100%;
+        height: 100%;
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 20px;
+            padding-left: 40px;
+
+            HorizontalLayout {
+                Text {
+                    text: zoomed_title;
+                    font-size: 48px;
+                    color: #ffffff;
+                    horizontal-alignment: center;
+                }
+
+                Text {
+                    text: "Click image to close";
+                    font-size: 24px;
+                    vertical-alignment: center;
+                    color: #ff0000;
+                    horizontal-alignment: center;
+                }
+
+                Button {
+                    text: "Change URL";
+                    clicked => {
+                        show_url_popup = true;
+                    }
+                }
+            }
+
+            TouchArea {
+                width: 1200px;
+                height: 600px;
+                Image {
+                    source: zoomed_image;
+                    width: 100%;
+                    height: 100%;
+                    image-fit: contain;
+                }
+                clicked => {
+                    show_zoomed_image = false;
+                }
+            }
+
+            Text {
+                text: "Click image to close";
+                font-size: 24px;
+                color: #cccccc;
+                horizontal-alignment: center;
+            }
+        }
+    }
+
+    // URL change popup
+    if show_url_popup: Rectangle {
+        background: rgba(0, 0, 0, 0.5);
+        width: 100%;
+        height: 100%;
+        z: 1000;
+
+        VerticalLayout {
+            alignment: center;
+            padding-left: 400px;
+
+            Rectangle {
+                background: #1c1c1c;
+                border-radius: 8px;
+                width: 400px;
+                height: 200px;
+
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 15px;
+                    padding: 20px;
+
+                    Text {
+                        text: "Change NINA URL";
+                        font-size: 24px;
+                        color: #ffffff;
+                        horizontal-alignment: center;
+                    }
+
+                    Text {
+                        text: "Current URL for Session " + (current_image_index + 1);
+                        font-size: 16px;
+                        color: #ffffff;
+                        horizontal-alignment: center;
+                    }
+                    
+                    TextInput {
+                        text <=> current_url;
+                        font-size: 14px;
+                        color: #cccccc;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                    }
+
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 20px;
+
+                        Button {
+                            text: "Save";
+                            clicked => {
+                                // Directly update the appropriate URL property
+                                if current_image_index == 0 { url1 = current_url; }
+                                else if current_image_index == 1 { url2 = current_url; }
+                                else if current_image_index == 2 { url3 = current_url; }
+                                else if current_image_index == 3 { url4 = current_url; }
+                                else if current_image_index == 4 { url5 = current_url; }
+                                else if current_image_index == 5 { url6 = current_url; }
+
+                                url_saved(current_image_index);
+                                show_url_popup = false;
+                            }
+                        }
+
+                        Button {
+                            text: "Cancel";
+                            clicked => {
+                                show_url_popup = false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

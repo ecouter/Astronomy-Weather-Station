@@ -79,6 +79,102 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
 
+    // Monitor NINA URL changes and periodic updates
+    let main_window_weak = main_window.as_weak();
+    let main_window_weak2 = main_window.as_weak();
+
+    // Spawn a thread to monitor URL changes and handle periodic updates
+    thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        println!("NINA URL monitor and periodic update thread started");
+
+        let mut last_urls = vec!["".to_string(); 6];
+        let mut last_update = std::time::Instant::now();
+
+        loop {
+            thread::sleep(Duration::from_millis(100)); // Check every 100ms
+
+            let window = main_window_weak.upgrade();
+            if let Some(window) = window {
+                // Check for URL changes
+                let mut url_changed = false;
+                let mut changed_index = -1;
+
+                for i in 0..6 {
+                    let current_url = match i {
+                        0 => window.get_nina_url1().to_string(),
+                        1 => window.get_nina_url2().to_string(),
+                        2 => window.get_nina_url3().to_string(),
+                        3 => window.get_nina_url4().to_string(),
+                        4 => window.get_nina_url5().to_string(),
+                        5 => window.get_nina_url6().to_string(),
+                        _ => "".to_string(),
+                    };
+
+                    if current_url != last_urls[i] && !current_url.is_empty() {
+                        println!("Detected NINA URL change for session {}: {}", i, current_url);
+
+                        // Update the URL storage
+                        {
+                            let mut urls = NINA_URLS.lock().unwrap();
+                            urls[i] = current_url.clone();
+                        }
+
+                        last_urls[i] = current_url;
+                        url_changed = true;
+                        changed_index = i as i32;
+                    }
+                }
+
+                // If URL changed, trigger immediate update
+                if url_changed {
+                    let window_weak = main_window_weak2.clone();
+                    slint::invoke_from_event_loop(move || {
+                        let rt = tokio::runtime::Runtime::new().unwrap();
+                        let window = window_weak.upgrade();
+                        if let Some(window) = window {
+                            rt.block_on(async {
+                                println!("Performing immediate NINA image update after URL change...");
+                                if let Err(e) = update_nina_images(&window).await {
+                                    eprintln!("Failed to update NINA images after URL change: {}", e);
+                                    window.set_error_message(format!("Failed to update NINA images: {}", e).into());
+                                } else {
+                                    println!("NINA images updated successfully after URL change");
+                                }
+                            });
+                        }
+                    });
+                }
+
+                // Check for periodic update (every 5 minutes)
+                if last_update.elapsed() >= Duration::from_secs(300) {
+                    let window_weak = main_window_weak2.clone();
+                    slint::invoke_from_event_loop(move || {
+                        let rt = tokio::runtime::Runtime::new().unwrap();
+                        let window = window_weak.upgrade();
+                        if let Some(window) = window {
+                            rt.block_on(async {
+                                println!("Performing periodic NINA image update...");
+                                if let Err(e) = update_nina_images(&window).await {
+                                    eprintln!("Failed to update NINA images periodically: {}", e);
+                                    window.set_error_message(format!("Failed to update NINA images: {}", e).into());
+                                } else {
+                                    println!("NINA images updated successfully");
+                                }
+                            });
+                        }
+                    });
+
+                    last_update = std::time::Instant::now();
+                }
+            } else {
+                // Window might not be ready yet or temporarily unavailable
+                thread::sleep(Duration::from_millis(1000)); // Wait longer if window is not available
+            }
+        }
+        println!("NINA URL monitor and periodic update thread ended");
+    });
+
     // Channel for communication between background thread and UI thread
     let (tx, rx) = mpsc::channel();
     // Channel for cloud cover cycling
@@ -278,6 +374,22 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                     }).unwrap();
                 }
+                "nina_update" => {
+                    println!("Processing NINA update signal");
+                    // Use invoke_from_event_loop to run async code in the UI thread
+                    slint::invoke_from_event_loop(move || {
+                        let rt = tokio::runtime::Runtime::new().unwrap();
+                        let window = window_weak.upgrade();
+                        if let Some(window) = window {
+                            rt.block_on(async {
+                                if let Err(e) = update_nina_images(&window).await {
+                                    eprintln!("Failed to update NINA images: {}", e);
+                                    window.set_error_message(format!("Failed to update NINA images: {}", e).into());
+                                }
+                            });
+                        }
+                    }).unwrap();
+                }
                 "cycle" => {
                     println!("Processing cloud cycle signal");
                     // Use invoke_from_event_loop to update UI in the UI thread
@@ -425,6 +537,12 @@ async fn update_environment_canada_images(main_window: &MainWindow) -> Result<()
     main_window.set_env_temperature_image(temperature_image);
     main_window.set_env_transparency_image(transparency_image);
     main_window.set_env_relative_humidity_image(relative_humidity_image);
+
+    // Load initial Nina images
+    if let Err(e) = update_nina_images(&main_window).await {
+        eprintln!("Failed to load Nina images: {}", e);
+        main_window.set_error_message(format!("Failed to load Nina images: {}", e).into());
+    }
 
     println!("Environment Canada images updated successfully");
     Ok(())
@@ -1002,7 +1120,7 @@ async fn update_weather_images(main_window: &MainWindow) -> Result<(), Box<dyn s
     let hrdps_time_str = hrdps_time.format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     // Bounding box: ~5° radius around coordinates
-    let bbox = BoundingBox::new(lon - 8.9, lon + 8.9, lat - 5.0, lat + 5.0);
+    let bbox = BoundingBox::new(lon - 12.7, lon + 12.7, lat - 5.0, lat + 5.0);
 
     // Image dimensions for 16:9 ratio
     let width = 1280;
@@ -1052,6 +1170,16 @@ static WIND_IMAGES: Lazy<Mutex<Vec<Vec<u8>>>> = Lazy::new(|| Mutex::new(Vec::new
 static WIND_LEGEND: Lazy<Mutex<Vec<u8>>> = Lazy::new(|| Mutex::new(Vec::new()));
 static WIND_INDEX: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::new(0));
 
+// Global storage for Nina URLs
+static NINA_URLS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(vec![
+    "http://localhost:1888".to_string(),
+    "http://localhost:1889".to_string(),
+    "http://localhost:1890".to_string(),
+    "http://localhost:1891".to_string(),
+    "http://localhost:1892".to_string(),
+    "http://localhost:1893".to_string(),
+]));
+
 async fn update_cloud_cover_images(main_window: &MainWindow) -> Result<(), Box<dyn std::error::Error>> {
     use geomet::{GeoMetAPI, BoundingBox};
     use chrono::{Utc, Duration};
@@ -1066,7 +1194,7 @@ async fn update_cloud_cover_images(main_window: &MainWindow) -> Result<(), Box<d
     let current_hour = now.with_minute(0).unwrap().with_second(0).unwrap().with_nanosecond(0).unwrap();
 
     // Bounding box: ~5° radius around coordinates
-    let bbox = BoundingBox::new(lon - 8.9, lon + 8.9, lat - 5.0, lat + 5.0);
+    let bbox = BoundingBox::new(lon - 12.7, lon + 12.7, lat - 5.0, lat + 5.0);
 
     // Image dimensions for cloud cover (16:9 ratio for left section)
     let width = 400;
@@ -1141,7 +1269,7 @@ async fn update_wind_images(main_window: &MainWindow) -> Result<(), Box<dyn std:
     let hrdps_time_str = hrdps_time.format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     // Bounding box: ~5° radius around coordinates
-    let bbox = BoundingBox::new(lon - 8.9, lon + 8.9, lat - 5.0, lat + 5.0);
+    let bbox = BoundingBox::new(lon - 12.7, lon + 12.7, lat - 5.0, lat + 5.0);
 
     // Image dimensions for wind (16:9 ratio)
     let width = 1280;
@@ -1292,6 +1420,109 @@ fn update_wind_display(main_window: &MainWindow) {
     }
 }
 
+async fn update_nina_images(main_window: &MainWindow) -> Result<(), Box<dyn std::error::Error>> {
+    use nina::{fetch_prepared_image, PreparedImageParams};
+
+    println!("Updating Nina images...");
+
+    // Same parameters for all images
+    let image_params = PreparedImageParams {
+        resize: Some(true),
+        quality: Some(80),
+        size: Some("400x225".to_string()),
+        scale: Some(1.0),
+        factor: Some(1.0),
+        black_clipping: Some(0.0),
+        unlinked: Some(false),
+        debayer: Some(true),
+        bayer_pattern: Some("RGGB".to_string()),
+        auto_prepare: Some(true),
+    };
+
+    // Get base URLs from storage
+    let base_urls = {
+        let urls = NINA_URLS.lock().unwrap();
+        urls.clone()
+    };
+
+    // Set URL properties for UI
+    if base_urls.len() >= 6 {
+        main_window.set_nina_url1(base_urls[0].clone().into());
+        main_window.set_nina_url2(base_urls[1].clone().into());
+        main_window.set_nina_url3(base_urls[2].clone().into());
+        main_window.set_nina_url4(base_urls[3].clone().into());
+        main_window.set_nina_url5(base_urls[4].clone().into());
+        main_window.set_nina_url6(base_urls[5].clone().into());
+    }
+
+    // Fetch images concurrently
+    let mut tasks = Vec::new();
+    for base_url in base_urls {
+        let params = image_params.clone();
+        let url = base_url.clone();
+        let task = tokio::spawn(async move {
+            match fetch_prepared_image(&url, &params).await {
+                Ok(data) => Some(data),
+                Err(e) => {
+                    eprintln!("Failed to fetch Nina prepared image from {}: {}", url, e);
+                    None
+                }
+            }
+        });
+        tasks.push(task);
+    }
+
+    // Wait for all tasks to complete
+    let mut images_data = Vec::new();
+    for task in tasks {
+        if let Ok(Some(data)) = task.await {
+            images_data.push(data);
+        } else {
+            // Add empty data for failed fetches
+            images_data.push(Vec::new());
+        }
+    }
+
+    // Decode and set images (only if we have data)
+    if images_data.len() >= 6 {
+        for i in 0..6 {
+            if !images_data[i].is_empty() {
+                match decode_png_to_slint_image(&images_data[i]) {
+                    Ok(slint_image) => {
+                        match i {
+                            0 => main_window.set_nina_image1(slint_image),
+                            1 => main_window.set_nina_image2(slint_image),
+                            2 => main_window.set_nina_image3(slint_image),
+                            3 => main_window.set_nina_image4(slint_image),
+                            4 => main_window.set_nina_image5(slint_image),
+                            5 => main_window.set_nina_image6(slint_image),
+                            _ => {}
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to decode Nina image {}: {}", i + 1, e);
+                    }
+                }
+            } else {
+                // Clear the image if no data was fetched
+                let empty_image = slint::Image::default();
+                match i {
+                    0 => main_window.set_nina_image1(empty_image),
+                    1 => main_window.set_nina_image2(empty_image),
+                    2 => main_window.set_nina_image3(empty_image),
+                    3 => main_window.set_nina_image4(empty_image),
+                    4 => main_window.set_nina_image5(empty_image),
+                    5 => main_window.set_nina_image6(empty_image),
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    println!("Nina images updated successfully");
+    Ok(())
+}
+
 async fn load_map_image(main_window: &MainWindow) -> Result<slint::Image, Box<dyn std::error::Error>> {
     use openstreetmap::OpenStreetMapAPI;
 
@@ -1322,7 +1553,7 @@ async fn load_map_image(main_window: &MainWindow) -> Result<slint::Image, Box<dy
     let api = OpenStreetMapAPI::new();
 
     // Define bounding box around coordinates (~1° x 1°)
-    let bbox = (lat - 5.0, lon - 8.9, lat + 5.0, lon + 8.9);
+    let bbox = (lat - 5.0, lon - 12.7, lat + 5.0, lon + 12.7);
 
     // Download and save map (400x225 pixels, zoom level 10)
     api.download_and_save_map(bbox, 6, &filepath).await?;

@@ -12,6 +12,7 @@ cleardarksky = { path = "../api/cleardarksky" }
 clearoutside = { path = "../api/clearoutside" }
 meteoblue = { path = "../api/meteoblue" }
 environment_canada = { path = "../api/environment_canada" }
+nina = { path = "../api/nina" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 anyhow = "1.0"
