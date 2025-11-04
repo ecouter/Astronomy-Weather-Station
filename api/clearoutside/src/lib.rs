@@ -451,8 +451,6 @@ impl ClearOutsideAPI {
             }
         }
 
-        // Debug output to see the actual structure
-        println!("DEBUG: Full sunlight_raw: {:?}", sunlight_raw);
 
         // Extract times using the EXACT same indices as Python
         let rise = sunlight_raw.get(3).cloned().unwrap_or_default();

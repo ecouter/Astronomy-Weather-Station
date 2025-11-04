@@ -9,16 +9,37 @@ use once_cell::sync::Lazy;
 use chrono::{Timelike, Datelike};
 
 fn load_coordinates(main_window: &MainWindow) -> Result<(f64, f64), Box<dyn std::error::Error>> {
+    // Check cache first
+    {
+        let coords = CACHED_COORDINATES.lock().unwrap();
+        if let Some(c) = *coords {
+            return Ok(c);
+        }
+    }
+
+    // Try to load from file
     match std::fs::read_to_string("../coordinates.json") {
         Ok(content) => {
             let coords: serde_json::Value = serde_json::from_str(&content)?;
             let lat: f64 = coords["lat"].as_str().unwrap().parse()?;
             let lon: f64 = coords["lon"].as_str().unwrap().parse()?;
+            // Cache the coordinates
+            {
+                let mut cache = CACHED_COORDINATES.lock().unwrap();
+                *cache = Some((lat, lon));
+            }
             Ok((lat, lon))
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            main_window.set_show_coordinates_popup(true);
-            main_window.set_coordinates_popup_message("coordinates.json file not found. Please ensure the file exists in the parent directory.".into());
+            // Show popup only once
+            {
+                let mut shown = COORDINATES_POPUP_SHOWN.lock().unwrap();
+                if !*shown {
+                    *shown = true;
+                    main_window.set_show_coordinates_popup(true);
+                    main_window.set_coordinates_popup_message("coordinates.json file not found. Please ensure the file exists in the parent directory.".into());
+                }
+            }
             Err(e.into())
         }
         Err(e) => Err(e.into())
@@ -46,6 +67,10 @@ fn main() -> Result<(), slint::PlatformError> {
         if let Err(e) = update_wind_images(&main_window).await {
             eprintln!("Failed to load initial wind images: {}", e);
             main_window.set_error_message(format!("Failed to load wind images: {}", e).into());
+        }
+        if let Err(e) = update_clearoutside_data(&main_window).await {
+            eprintln!("Failed to load initial ClearOutside data: {}", e);
+            main_window.set_error_message(format!("Failed to load ClearOutside data: {}", e).into());
         }
         match load_map_image(&main_window).await {
             Ok(map_image) => {
@@ -79,101 +104,6 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
 
-    // Monitor NINA URL changes and periodic updates
-    let main_window_weak = main_window.as_weak();
-    let main_window_weak2 = main_window.as_weak();
-
-    // Spawn a thread to monitor URL changes and handle periodic updates
-    thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        println!("NINA URL monitor and periodic update thread started");
-
-        let mut last_urls = vec!["".to_string(); 6];
-        let mut last_update = std::time::Instant::now();
-
-        loop {
-            thread::sleep(Duration::from_millis(100)); // Check every 100ms
-
-            let window = main_window_weak.upgrade();
-            if let Some(window) = window {
-                // Check for URL changes
-                let mut url_changed = false;
-                let mut changed_index = -1;
-
-                for i in 0..6 {
-                    let current_url = match i {
-                        0 => window.get_nina_url1().to_string(),
-                        1 => window.get_nina_url2().to_string(),
-                        2 => window.get_nina_url3().to_string(),
-                        3 => window.get_nina_url4().to_string(),
-                        4 => window.get_nina_url5().to_string(),
-                        5 => window.get_nina_url6().to_string(),
-                        _ => "".to_string(),
-                    };
-
-                    if current_url != last_urls[i] && !current_url.is_empty() {
-                        println!("Detected NINA URL change for session {}: {}", i, current_url);
-
-                        // Update the URL storage
-                        {
-                            let mut urls = NINA_URLS.lock().unwrap();
-                            urls[i] = current_url.clone();
-                        }
-
-                        last_urls[i] = current_url;
-                        url_changed = true;
-                        changed_index = i as i32;
-                    }
-                }
-
-                // If URL changed, trigger immediate update
-                if url_changed {
-                    let window_weak = main_window_weak2.clone();
-                    slint::invoke_from_event_loop(move || {
-                        let rt = tokio::runtime::Runtime::new().unwrap();
-                        let window = window_weak.upgrade();
-                        if let Some(window) = window {
-                            rt.block_on(async {
-                                println!("Performing immediate NINA image update after URL change...");
-                                if let Err(e) = update_nina_images(&window).await {
-                                    eprintln!("Failed to update NINA images after URL change: {}", e);
-                                    window.set_error_message(format!("Failed to update NINA images: {}", e).into());
-                                } else {
-                                    println!("NINA images updated successfully after URL change");
-                                }
-                            });
-                        }
-                    });
-                }
-
-                // Check for periodic update (every 5 minutes)
-                if last_update.elapsed() >= Duration::from_secs(300) {
-                    let window_weak = main_window_weak2.clone();
-                    slint::invoke_from_event_loop(move || {
-                        let rt = tokio::runtime::Runtime::new().unwrap();
-                        let window = window_weak.upgrade();
-                        if let Some(window) = window {
-                            rt.block_on(async {
-                                println!("Performing periodic NINA image update...");
-                                if let Err(e) = update_nina_images(&window).await {
-                                    eprintln!("Failed to update NINA images periodically: {}", e);
-                                    window.set_error_message(format!("Failed to update NINA images: {}", e).into());
-                                } else {
-                                    println!("NINA images updated successfully");
-                                }
-                            });
-                        }
-                    });
-
-                    last_update = std::time::Instant::now();
-                }
-            } else {
-                // Window might not be ready yet or temporarily unavailable
-                thread::sleep(Duration::from_millis(1000)); // Wait longer if window is not available
-            }
-        }
-        println!("NINA URL monitor and periodic update thread ended");
-    });
 
     // Channel for communication between background thread and UI thread
     let (tx, rx) = mpsc::channel();
@@ -187,6 +117,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let mut interval = tokio::time::interval(Duration::from_secs(600)); // 10 minutes
+            interval.tick().await; // Skip immediate first trigger
             loop {
                 interval.tick().await;
                 // Signal the UI thread to update images
@@ -204,6 +135,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let mut interval = tokio::time::interval(Duration::from_secs(3600)); // 1 hour
+            interval.tick().await; // Skip immediate first trigger
             loop {
                 interval.tick().await;
                 // Signal the UI thread to update cloud cover images
@@ -221,6 +153,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let mut interval = tokio::time::interval(Duration::from_secs(3600)); // 1 hour
+            interval.tick().await; // Skip immediate first trigger
             loop {
                 interval.tick().await;
                 // Signal the UI thread to update ClearOutside data
@@ -259,6 +192,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let mut interval = tokio::time::interval(Duration::from_secs(3600)); // 1 hour
+            interval.tick().await; // Skip immediate first trigger
             loop {
                 interval.tick().await;
                 // Signal the UI thread to update wind images
@@ -296,6 +230,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let mut interval = tokio::time::interval(Duration::from_secs(3600)); // 1 hour
+            interval.tick().await; // Skip immediate first trigger
             loop {
                 interval.tick().await;
                 // Signal the UI thread to update Environment Canada images
@@ -709,10 +644,6 @@ struct NightCondition {
 }
 
 fn update_clearoutside_display(main_window: &MainWindow, conditions: Vec<NightCondition>) {
-    println!("Night conditions: {:?}", conditions.len());
-    for condition in &conditions {
-        println!("{} {}: {} - {}", condition.day, condition.hour, condition.condition, condition.total_clouds);
-    }
 
     // Group conditions by day
     use std::collections::HashMap;
@@ -914,12 +845,6 @@ struct MeteoBlueNightData {
 }
 
 fn update_meteoblue_display(main_window: &MainWindow, night_data: Vec<MeteoBlueNightData>) {
-    println!("MeteoBlue night data: {:?}", night_data.len());
-    for data in &night_data {
-        println!("{} {}: clouds {}/{}/{}, seeing {:.1}\", temp {:.1}°C",
-                 data.day, data.hour, data.clouds_low_pct, data.clouds_mid_pct, data.clouds_high_pct,
-                 data.seeing_arcsec, data.temp_c);
-    }
 
     // Group data by day
     use std::collections::HashMap;
@@ -1179,6 +1104,12 @@ static NINA_URLS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(vec![
     "http://localhost:1892".to_string(),
     "http://localhost:1893".to_string(),
 ]));
+
+// Global cache for coordinates
+static CACHED_COORDINATES: Lazy<Mutex<Option<(f64, f64)>>> = Lazy::new(|| Mutex::new(None));
+
+// Flag to ensure coordinates popup is shown only once
+static COORDINATES_POPUP_SHOWN: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
 
 async fn update_cloud_cover_images(main_window: &MainWindow) -> Result<(), Box<dyn std::error::Error>> {
     use geomet::{GeoMetAPI, BoundingBox};
