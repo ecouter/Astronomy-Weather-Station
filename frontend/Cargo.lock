@@ -748,6 +748,8 @@ name = "cleardarksky"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "log",
+ "pretty_env_logger",
  "reqwest",
  "scraper 0.18.1",
  "serde",
@@ -761,6 +763,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "log",
+ "pretty_env_logger",
  "reqwest",
  "scraper 0.18.1",
  "serde",
@@ -1315,11 +1319,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "env_logger"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4cd405aab171cb85d6735e5c8d9db038c17d3ca007a4d2c25f337935c3d90580"
+dependencies = [
+ "humantime",
+ "is-terminal",
+ "log",
+ "regex",
+ "termcolor",
+]
+
+[[package]]
 name = "environment_canada"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "log",
+ "pretty_env_logger",
  "reqwest",
  "serde",
  "serde_json",
@@ -1761,6 +1780,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "log",
+ "pretty_env_logger",
  "reqwest",
  "serde",
  "serde_json",
@@ -2040,6 +2061,12 @@ name = "httpdate"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
+
+[[package]]
+name = "humantime"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "135b12329e5e3ce057a9f972339ea52bc954fe1e9358ef27f95e89716fbc5424"
 
 [[package]]
 name = "hyper"
@@ -2603,6 +2630,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "469fb0b9cefa57e3ef31275ee7cacb78f2fdca44e4765491884a2b119d4eb130"
 
 [[package]]
+name = "is-terminal"
+version = "0.4.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
+dependencies = [
+ "hermit-abi 0.5.2",
+ "libc",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "itertools"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2957,6 +2995,8 @@ name = "meteoblue"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "log",
+ "pretty_env_logger",
  "reqwest",
  "scraper 0.17.1",
  "serde",
@@ -3085,6 +3125,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.21.7",
+ "log",
+ "pretty_env_logger",
  "reqwest",
  "serde",
  "serde_json",
@@ -3615,6 +3657,8 @@ dependencies = [
  "anyhow",
  "futures",
  "image 0.24.9",
+ "log",
+ "pretty_env_logger",
  "reqwest",
  "tokio",
 ]
@@ -3910,6 +3954,16 @@ name = "precomputed-hash"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
+
+[[package]]
+name = "pretty_env_logger"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "865724d4dbe39d9f3dd3b52b88d859d66bcb2d6a0acfd5ea68a65fb66d4bdc1c"
+dependencies = [
+ "env_logger",
+ "log",
+]
 
 [[package]]
 name = "prettyplease"
@@ -5822,10 +5876,12 @@ dependencies = [
  "geomet",
  "gif",
  "image 0.24.9",
+ "log",
  "meteoblue",
  "nina",
  "once_cell",
  "openstreetmap",
+ "pretty_env_logger",
  "serde",
  "serde_json",
  "slint",

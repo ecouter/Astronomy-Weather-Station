@@ -1,5 +1,8 @@
 slint::include_modules!();
 
+extern crate pretty_env_logger;
+#[macro_use] extern crate log;
+
 use std::time::Duration;
 use std::thread;
 use std::sync::mpsc;
@@ -47,9 +50,228 @@ fn load_coordinates(main_window: &MainWindow) -> Result<(f64, f64), Box<dyn std:
 }
 
 fn main() -> Result<(), slint::PlatformError> {
-    println!("Starting weather station frontend...");
+    pretty_env_logger::init();
+
+    info!("Starting weather station frontend...");
 
     let main_window = MainWindow::new()?;
+
+    // Set up callback handlers for manual navigation
+    let main_window_weak1 = main_window.as_weak();
+    main_window.on_cloud_cover_previous(move || {
+        debug!("Cloud cover previous button clicked");
+        let window_weak = main_window_weak1.clone();
+        slint::invoke_from_event_loop(move || {
+            debug!("Processing cloud cover previous in event loop");
+            let window = window_weak.upgrade();
+            if let Some(window) = window {
+                debug!("Window upgraded successfully");
+                // Use try_lock to avoid blocking the UI thread
+                if let Ok(images) = CLOUD_COVER_IMAGES.try_lock() {
+                    debug!("CLOUD_COVER_IMAGES lock acquired, {} images", images.len());
+                    if let Ok(mut index) = CLOUD_COVER_INDEX.try_lock() {
+                        debug!("CLOUD_COVER_INDEX lock acquired, current index: {}", *index);
+                        if !images.is_empty() {
+                            if *index == 0 {
+                                *index = images.len() - 1;
+                            } else {
+                                *index -= 1;
+                            }
+                            debug!("New index: {}", *index);
+                            // Decode image directly in the UI thread - should be fast for small images
+                            let current_image_data = &images[*index];
+                            let counter_text = format!("+{}h", *index + 1);
+                            match decode_png_to_slint_image(current_image_data) {
+                                Ok(slint_image) => {
+                                    window.set_cloud_cover_image(slint_image);
+                                    window.set_cloud_cover_counter(counter_text.into());
+                                }
+                                Err(e) => {
+                                    error!("Failed to decode cloud cover image: {}", e);
+                                }
+                            }
+                        } else {
+                            debug!("No cloud cover images available");
+                        }
+                    } else {
+                        debug!("Failed to acquire CLOUD_COVER_INDEX lock");
+                    }
+                } else {
+                    debug!("Failed to acquire CLOUD_COVER_IMAGES lock");
+                }
+            } else {
+                debug!("Failed to upgrade window weak reference");
+            }
+        }).unwrap();
+    });
+
+    let main_window_weak2 = main_window.as_weak();
+    main_window.on_cloud_cover_next(move || {
+        debug!("Cloud cover next button clicked");
+        let window_weak = main_window_weak2.clone();
+        slint::invoke_from_event_loop(move || {
+            debug!("Processing cloud cover next in event loop");
+            let window = window_weak.upgrade();
+            if let Some(window) = window {
+                debug!("Window upgraded successfully");
+                // Use try_lock to avoid blocking the UI thread
+                if let Ok(images) = CLOUD_COVER_IMAGES.try_lock() {
+                    debug!("CLOUD_COVER_IMAGES lock acquired, {} images", images.len());
+                    if let Ok(mut index) = CLOUD_COVER_INDEX.try_lock() {
+                        debug!("CLOUD_COVER_INDEX lock acquired, current index: {}", *index);
+                        if !images.is_empty() {
+                            *index = (*index + 1) % images.len();
+                            debug!("New index: {}", *index);
+                            // Decode image directly in the UI thread - should be fast for small images
+                            let current_image_data = &images[*index];
+                            let counter_text = format!("+{}h", *index + 1);
+                            match decode_png_to_slint_image(current_image_data) {
+                                Ok(slint_image) => {
+                                    window.set_cloud_cover_image(slint_image);
+                                    window.set_cloud_cover_counter(counter_text.into());
+                                }
+                                Err(e) => {
+                                    error!("Failed to decode cloud cover image: {}", e);
+                                }
+                            }
+                        } else {
+                            debug!("No cloud cover images available");
+                        }
+                    } else {
+                        debug!("Failed to acquire CLOUD_COVER_INDEX lock");
+                    }
+                } else {
+                    debug!("Failed to acquire CLOUD_COVER_IMAGES lock");
+                }
+            } else {
+                debug!("Failed to upgrade window weak reference");
+            }
+        }).unwrap();
+    });
+
+    let main_window_weak3 = main_window.as_weak();
+    main_window.on_wind_previous(move || {
+        debug!("Wind previous button clicked");
+        let window_weak = main_window_weak3.clone();
+        slint::invoke_from_event_loop(move || {
+            debug!("Processing wind previous in event loop");
+            let window = window_weak.upgrade();
+            if let Some(window) = window {
+                debug!("Window upgraded successfully");
+                // Use try_lock to avoid blocking the UI thread
+                if let Ok(images) = WIND_IMAGES.try_lock() {
+                    debug!("WIND_IMAGES lock acquired, {} images", images.len());
+                    if let Ok(mut index) = WIND_INDEX.try_lock() {
+                        debug!("WIND_INDEX lock acquired, current index: {}", *index);
+                        if !images.is_empty() {
+                            if *index == 0 {
+                                *index = images.len() - 1;
+                            } else {
+                                *index -= 1;
+                            }
+                            debug!("New index: {}", *index);
+                            // Decode image directly in the UI thread - should be fast for small images
+                            let current_image_data = &images[*index];
+                            let legend_data = {
+                                let legend = WIND_LEGEND.lock().unwrap();
+                                legend.clone()
+                            };
+                            let pressures = vec![100, 200, 300, 400, 500, 600, 700, 800, 900, 925, 950, 970, 985, 1000, 1015];
+                            let pressure = pressures[*index];
+                            let counter_text = format!("{} mb", pressure);
+                            match decode_png_to_slint_image(current_image_data) {
+                                Ok(slint_image) => {
+                                    window.set_wind_image(slint_image);
+                                    window.set_wind_counter(counter_text.into());
+                                    if !legend_data.is_empty() {
+                                        match decode_png_to_slint_image(&legend_data) {
+                                            Ok(legend_image) => {
+                                                window.set_wind_legend_image(legend_image);
+                                            }
+                                            Err(e) => {
+                                                error!("Failed to decode wind legend: {}", e);
+                                            }
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Failed to decode wind image: {}", e);
+                                }
+                            }
+                        } else {
+                            debug!("No wind images available");
+                        }
+                    } else {
+                        debug!("Failed to acquire WIND_INDEX lock");
+                    }
+                } else {
+                    debug!("Failed to acquire WIND_IMAGES lock");
+                }
+            } else {
+                debug!("Failed to upgrade window weak reference");
+            }
+        }).unwrap();
+    });
+
+    let main_window_weak4 = main_window.as_weak();
+    main_window.on_wind_next(move || {
+        debug!("Wind next button clicked");
+        let window_weak = main_window_weak4.clone();
+        slint::invoke_from_event_loop(move || {
+            debug!("Processing wind next in event loop");
+            let window = window_weak.upgrade();
+            if let Some(window) = window {
+                debug!("Window upgraded successfully");
+                // Use try_lock to avoid blocking the UI thread
+                if let Ok(images) = WIND_IMAGES.try_lock() {
+                    debug!("WIND_IMAGES lock acquired, {} images", images.len());
+                    if let Ok(mut index) = WIND_INDEX.try_lock() {
+                        debug!("WIND_INDEX lock acquired, current index: {}", *index);
+                        if !images.is_empty() {
+                            *index = (*index + 1) % images.len();
+                            debug!("New index: {}", *index);
+                            // Decode image directly in the UI thread - should be fast for small images
+                            let current_image_data = &images[*index];
+                            let legend_data = {
+                                let legend = WIND_LEGEND.lock().unwrap();
+                                legend.clone()
+                            };
+                            let pressures = vec![100, 200, 300, 400, 500, 600, 700, 800, 900, 925, 950, 970, 985, 1000, 1015];
+                            let pressure = pressures[*index];
+                            let counter_text = format!("{} mb", pressure);
+                            match decode_png_to_slint_image(current_image_data) {
+                                Ok(slint_image) => {
+                                    window.set_wind_image(slint_image);
+                                    window.set_wind_counter(counter_text.into());
+                                    if !legend_data.is_empty() {
+                                        match decode_png_to_slint_image(&legend_data) {
+                                            Ok(legend_image) => {
+                                                window.set_wind_legend_image(legend_image);
+                                            }
+                                            Err(e) => {
+                                                error!("Failed to decode wind legend: {}", e);
+                                            }
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Failed to decode wind image: {}", e);
+                                }
+                            }
+                        } else {
+                            debug!("No wind images available");
+                        }
+                    } else {
+                        debug!("Failed to acquire WIND_INDEX lock");
+                    }
+                } else {
+                    debug!("Failed to acquire WIND_IMAGES lock");
+                }
+            } else {
+                debug!("Failed to upgrade window weak reference");
+            }
+        }).unwrap();
+    });
 
     // Start the async runtime for image fetching
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -57,19 +279,19 @@ fn main() -> Result<(), slint::PlatformError> {
     // Initial image load
     rt.block_on(async {
         if let Err(e) = update_weather_images(&main_window).await {
-            eprintln!("Failed to load initial images: {}", e);
+            error!("Failed to load initial images: {}", e);
             main_window.set_error_message(format!("Failed to load images: {}", e).into());
         }
         if let Err(e) = update_cloud_cover_images(&main_window).await {
-            eprintln!("Failed to load initial cloud cover images: {}", e);
+            error!("Failed to load initial cloud cover images: {}", e);
             main_window.set_error_message(format!("Failed to load cloud cover images: {}", e).into());
         }
         if let Err(e) = update_wind_images(&main_window).await {
-            eprintln!("Failed to load initial wind images: {}", e);
+            error!("Failed to load initial wind images: {}", e);
             main_window.set_error_message(format!("Failed to load wind images: {}", e).into());
         }
         if let Err(e) = update_clearoutside_data(&main_window).await {
-            eprintln!("Failed to load initial ClearOutside data: {}", e);
+            error!("Failed to load initial ClearOutside data: {}", e);
             main_window.set_error_message(format!("Failed to load ClearOutside data: {}", e).into());
         }
         match load_map_image(&main_window).await {
@@ -77,7 +299,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 main_window.set_map_image(map_image);
             }
             Err(e) => {
-                eprintln!("Failed to load map image: {}", e);
+                error!("Failed to load map image: {}", e);
                 main_window.set_error_message(format!("Failed to load map image: {}", e).into());
             }
         }
@@ -86,7 +308,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 main_window.set_cleardarksky_image(cleardarksky_image);
             }
             Err(e) => {
-                eprintln!("Failed to load ClearDarkSky image: {}", e);
+                error!("Failed to load ClearDarkSky image: {}", e);
                 main_window.set_error_message(format!("Failed to load ClearDarkSky image: {}", e).into());
             }
         }
@@ -99,7 +321,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             if let Err(e) = update_environment_canada_images(&main_window).await {
-                eprintln!("Failed to load Environment Canada images: {}", e);
+                error!("Failed to load Environment Canada images: {}", e);
             }
         });
     }
@@ -107,9 +329,9 @@ fn main() -> Result<(), slint::PlatformError> {
 
     // Channel for communication between background thread and UI thread
     let (tx, rx) = mpsc::channel();
-    // Channel for cloud cover cycling
+    // Channel for cloud cover updates (not cycling)
     let (cloud_tx, cloud_rx) = mpsc::channel();
-    // Channel for wind cycling
+    // Channel for wind updates (not cycling)
     let (wind_tx, wind_rx) = mpsc::channel();
 
     // Spawn background thread for periodic weather updates
@@ -165,26 +387,7 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    // Spawn background thread for cloud cover cycling (every 2 seconds)
-    let cloud_tx_cycle = cloud_tx.clone();
-    thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        println!("Cloud cover cycling thread started");
-        rt.block_on(async {
-            let mut interval = tokio::time::interval(Duration::from_secs(2)); // 2 seconds
-            loop {
-                interval.tick().await;
-                println!("Sending cycle signal");
-                // Signal the UI thread to cycle cloud cover display
-                if cloud_tx_cycle.send("cycle").is_err() {
-                    println!("Failed to send cycle signal, UI thread may have shut down");
-                    // UI thread has shut down
-                    break;
-                }
-            }
-        });
-        println!("Cloud cover cycling thread ended");
-    });
+
 
     // Spawn background thread for wind updates (hourly)
     let wind_tx_clone = wind_tx.clone();
@@ -204,25 +407,7 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    // Spawn background thread for wind cycling (every 2 seconds)
-    thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        println!("Wind cycling thread started");
-        rt.block_on(async {
-            let mut interval = tokio::time::interval(Duration::from_secs(2)); // 2 seconds
-            loop {
-                interval.tick().await;
-                println!("Sending wind cycle signal");
-                // Signal the UI thread to cycle wind display
-                if wind_tx.send("cycle").is_err() {
-                    println!("Failed to send wind cycle signal, UI thread may have shut down");
-                    // UI thread has shut down
-                    break;
-                }
-            }
-        });
-        println!("Wind cycling thread ended");
-    });
+
 
     // Spawn background thread for Environment Canada updates (hourly)
     let env_canada_tx = cloud_tx.clone(); // Reuse channel for simplicity
@@ -246,13 +431,13 @@ fn main() -> Result<(), slint::PlatformError> {
     let main_window_weak = main_window.as_weak();
     let _cloud_update_handle = thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        println!("Cloud cover update thread started");
+        info!("Cloud cover update thread started");
         while let Ok(signal) = cloud_rx.recv() {
-            println!("Received cloud signal: {}", signal);
+            info!("Received cloud signal: {}", signal);
             let window_weak = main_window_weak.clone();
             match signal {
                 "update" => {
-                    println!("Processing cloud update signal");
+                    info!("Processing cloud update signal");
                     // Use invoke_from_event_loop to run async code in the UI thread
                     slint::invoke_from_event_loop(move || {
                         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -260,17 +445,17 @@ fn main() -> Result<(), slint::PlatformError> {
                         if let Some(window) = window {
                             rt.block_on(async {
                                 if let Err(e) = update_cloud_cover_images(&window).await {
-                                    eprintln!("Failed to update cloud cover images: {}", e);
+                                    error!("Failed to update cloud cover images: {}", e);
                                     window.set_error_message(format!("Failed to update cloud cover images: {}", e).into());
                                 }
                                 // Also update ClearDarkSky chart
                                 match load_cleardarksky_image(&window).await {
                                     Ok(cleardarksky_image) => {
                                         window.set_cleardarksky_image(cleardarksky_image);
-                                        println!("Updated ClearDarkSky chart");
+                                        info!("Updated ClearDarkSky chart");
                                     }
                                     Err(e) => {
-                                        eprintln!("Failed to update ClearDarkSky image: {}", e);
+                                        error!("Failed to update ClearDarkSky image: {}", e);
                                         window.set_error_message(format!("Failed to update ClearDarkSky image: {}", e).into());
                                     }
                                 }
@@ -279,7 +464,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     }).unwrap();
                 }
                 "clearoutside_update" => {
-                    println!("Processing ClearOutside update signal");
+                    info!("Processing ClearOutside update signal");
                     // Use invoke_from_event_loop to run async code in the UI thread
                     slint::invoke_from_event_loop(move || {
                         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -287,7 +472,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         if let Some(window) = window {
                             rt.block_on(async {
                                 if let Err(e) = update_clearoutside_data(&window).await {
-                                    eprintln!("Failed to update ClearOutside data: {}", e);
+                                    error!("Failed to update ClearOutside data: {}", e);
                                     window.set_error_message(format!("Failed to update ClearOutside data: {}", e).into());
                                 }
                             });
@@ -295,7 +480,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     }).unwrap();
                 }
                 "env_canada_update" => {
-                    println!("Processing Environment Canada update signal");
+                    info!("Processing Environment Canada update signal");
                     // Use invoke_from_event_loop to run async code in the UI thread
                     slint::invoke_from_event_loop(move || {
                         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -303,14 +488,14 @@ fn main() -> Result<(), slint::PlatformError> {
                         if let Some(window) = window {
                             rt.block_on(async {
                                 if let Err(e) = update_environment_canada_images(&window).await {
-                                    eprintln!("Failed to update Environment Canada images: {}", e);
+                                    error!("Failed to update Environment Canada images: {}", e);
                                 }
                             });
                         }
                     }).unwrap();
                 }
                 "nina_update" => {
-                    println!("Processing NINA update signal");
+                    info!("Processing NINA update signal");
                     // Use invoke_from_event_loop to run async code in the UI thread
                     slint::invoke_from_event_loop(move || {
                         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -318,7 +503,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         if let Some(window) = window {
                             rt.block_on(async {
                                 if let Err(e) = update_nina_images(&window).await {
-                                    eprintln!("Failed to update NINA images: {}", e);
+                                    error!("Failed to update NINA images: {}", e);
                                     window.set_error_message(format!("Failed to update NINA images: {}", e).into());
                                 }
                             });
@@ -326,7 +511,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     }).unwrap();
                 }
                 "cycle" => {
-                    println!("Processing cloud cycle signal");
+                    info!("Processing cloud cycle signal");
                     // Use invoke_from_event_loop to update UI in the UI thread
                     slint::invoke_from_event_loop(move || {
                         let window = window_weak.upgrade();
@@ -336,24 +521,24 @@ fn main() -> Result<(), slint::PlatformError> {
                     }).unwrap();
                 }
                 _ => {
-                    println!("Unknown cloud signal: {}", signal);
+                    info!("Unknown cloud signal: {}", signal);
                 }
             }
         }
-        println!("Cloud cover update thread ended");
+        info!("Cloud cover update thread ended");
     });
 
     // Handle wind updates directly in the main thread using invoke_from_event_loop
     let main_window_weak2 = main_window.as_weak();
     let _wind_update_handle = thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        println!("Wind update thread started");
+        info!("Wind update thread started");
         while let Ok(signal) = wind_rx.recv() {
-            println!("Received wind signal: {}", signal);
+            info!("Received wind signal: {}", signal);
             let window_weak = main_window_weak2.clone();
             match signal {
                 "update" => {
-                    println!("Processing wind update signal");
+                    info!("Processing wind update signal");
                     // Use invoke_from_event_loop to run async code in the UI thread
                     slint::invoke_from_event_loop(move || {
                         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -361,7 +546,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         if let Some(window) = window {
                             rt.block_on(async {
                                 if let Err(e) = update_wind_images(&window).await {
-                                    eprintln!("Failed to update wind images: {}", e);
+                                    error!("Failed to update wind images: {}", e);
                                     window.set_error_message(format!("Failed to update wind images: {}", e).into());
                                 }
                             });
@@ -369,7 +554,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     }).unwrap();
                 }
                 "cycle" => {
-                    println!("Processing wind cycle signal");
+                    info!("Processing wind cycle signal");
                     // Use invoke_from_event_loop to update UI in the UI thread
                     slint::invoke_from_event_loop(move || {
                         let window = window_weak.upgrade();
@@ -379,11 +564,11 @@ fn main() -> Result<(), slint::PlatformError> {
                     }).unwrap();
                 }
                 _ => {
-                    println!("Unknown wind signal: {}", signal);
+                    info!("Unknown wind signal: {}", signal);
                 }
             }
         }
-        println!("Wind update thread ended");
+        info!("Wind update thread ended");
     });
 
     // Keep the main window alive by storing it
@@ -401,7 +586,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 if let Some(window) = window {
                     rt.block_on(async {
                         if let Err(e) = update_weather_images(&window).await {
-                            eprintln!("Failed to update images: {}", e);
+                            error!("Failed to update images: {}", e);
                             window.set_error_message(format!("Failed to update images: {}", e).into());
                         }
                     });
@@ -410,12 +595,12 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
-    println!("Weather station frontend started successfully");
+    info!("Weather station frontend started successfully");
 
     // Run the main window - this blocks until the window is closed
     let result = main_window.run();
 
-    println!("Main window closed, shutting down threads...");
+    info!("Main window closed, shutting down threads...");
     result
 }
 
@@ -423,7 +608,7 @@ async fn update_environment_canada_images(main_window: &MainWindow) -> Result<()
     use environment_canada::{EnvironmentCanadaAPI, ForecastType, Region};
     use chrono::{Utc, Timelike, Duration};
 
-    println!("Updating Environment Canada images...");
+    info!("Updating Environment Canada images...");
 
     // Calculate latest available model run (accounting for cascading availability)
     // Environment Canada has cascading availability: 06 UTC only available when 12 UTC is available,
@@ -1282,13 +1467,13 @@ async fn update_wind_images(main_window: &MainWindow) -> Result<(), Box<dyn std:
 
 fn update_cloud_cover_display(main_window: &MainWindow) {
     let images = CLOUD_COVER_IMAGES.lock().unwrap();
-    let mut index = CLOUD_COVER_INDEX.lock().unwrap();
+    let index = CLOUD_COVER_INDEX.lock().unwrap();
 
-    if !images.is_empty() {
+    if !images.is_empty() && *index < images.len() {
         let current_image_data = &images[*index];
         let counter_text = format!("+{}h", *index + 1);
 
-        println!("Displaying cloud cover image: {} (index: {})", counter_text, *index);
+        debug!("Displaying cloud cover image: {} (index: {})", counter_text, *index);
 
         // Decode the PNG data to Slint image
         match decode_png_to_slint_image(current_image_data) {
@@ -1297,30 +1482,26 @@ fn update_cloud_cover_display(main_window: &MainWindow) {
                 main_window.set_cloud_cover_counter(counter_text.into());
             }
             Err(e) => {
-                eprintln!("Failed to decode cloud cover image: {}", e);
+                error!("Failed to decode cloud cover image: {}", e);
             }
         }
-
-        // Cycle to next image
-        *index = (*index + 1) % images.len();
-        println!("Next index will be: {}", *index);
     } else {
-        println!("No cloud cover images available for display");
+        debug!("No cloud cover images available for display ({} images, index {})", images.len(), *index);
     }
 }
 
 fn update_wind_display(main_window: &MainWindow) {
     let images = WIND_IMAGES.lock().unwrap();
     let legend = WIND_LEGEND.lock().unwrap();
-    let mut index = WIND_INDEX.lock().unwrap();
+    let index = WIND_INDEX.lock().unwrap();
 
-    if !images.is_empty() {
+    if !images.is_empty() && *index < images.len() {
         let current_image_data = &images[*index];
         let pressures = vec![100, 200, 300, 400, 500, 600, 700, 800, 900, 925, 950, 970, 985, 1000, 1015];
         let pressure = pressures[*index];
         let counter_text = format!("{} mb", pressure);
 
-        println!("Displaying wind image: {} (index: {})", counter_text, *index);
+        debug!("Displaying wind image: {} (index: {})", counter_text, *index);
 
         // Decode the PNG data to Slint image
         match decode_png_to_slint_image(current_image_data) {
@@ -1333,21 +1514,17 @@ fn update_wind_display(main_window: &MainWindow) {
                             main_window.set_wind_legend_image(legend_image);
                         }
                         Err(e) => {
-                            eprintln!("Failed to decode wind legend: {}", e);
+                            error!("Failed to decode wind legend: {}", e);
                         }
                     }
                 }
             }
             Err(e) => {
-                eprintln!("Failed to decode wind image: {}", e);
+                error!("Failed to decode wind image: {}", e);
             }
         }
-
-        // Cycle to next image
-        *index = (*index + 1) % images.len();
-        println!("Next wind index will be: {}", *index);
     } else {
-        println!("No wind images available for display");
+        debug!("No wind images available for display ({} images, index {})", images.len(), *index);
     }
 }
 

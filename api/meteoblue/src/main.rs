@@ -1,7 +1,11 @@
+extern crate pretty_env_logger;
+#[macro_use] extern crate log;
+
 use meteoblue::fetch_meteoblue_data;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    pretty_env_logger::init();
     // Parse command line arguments for latitude and longitude
     let args: Vec<String> = std::env::args().collect();
 
@@ -12,22 +16,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         (lat, lon)
     } else {
         // Example usage: default coordinates from the sample file
-        println!("Usage: {} <latitude> <longitude>", args[0]);
-        println!("Using default coordinates (45.219N -73.111W)...");
+        info!("Usage: {} <latitude> <longitude>", args[0]);
+        info!("Using default coordinates (45.219N -73.111W)...");
         (45.219, -73.111)
     };
 
-    println!("Fetching astronomy seeing data for {:.3}N {:.3}{}...",
+    info!("Fetching astronomy seeing data for {:.3}N {:.3}{}...",
              lat, lon.abs(), if lon >= 0.0 { "E" } else { "W" });
 
     match fetch_meteoblue_data(lat, lon).await {
         Ok(data) => {
-            println!("✅ Successfully retrieved {} data points", data.len());
+            info!("✅ Successfully retrieved {} data points", data.len());
 
             // Print first few data points as example
-            println!("\n📊 Sample forecast data:");
+            info!("\n📊 Sample forecast data:");
             for point in data.iter().take(5) {
-                println!("  {} {:02}:00 - Seeing: {:.2}\" (indices: {}/{}, clouds: {}/{}/{}%, temp: {:.1}°C, humidity: {}%)",
+                info!("  {} {:02}:00 - Seeing: {:.2}\" (indices: {}/{}, clouds: {}/{}/{}%, temp: {:.1}°C, humidity: {}%)",
                     point.day,
                     point.hour,
                     point.seeing_arcsec,
@@ -53,15 +57,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if let Some(best) = best_seeing {
                 let total_clouds = best.clouds_low_pct + best.clouds_mid_pct + best.clouds_high_pct;
-                println!("\n🌟 Best observability conditions:");
-                println!("  {} {:02}:00 - Seeing: {:.2}\", Indices: {}/{}, Clouds: {}%",
+                info!("\n🌟 Best observability conditions:");
+                info!("  {} {:02}:00 - Seeing: {:.2}\", Indices: {}/{}, Clouds: {}%",
                     best.day, best.hour, best.seeing_arcsec, best.index1, best.index2, total_clouds);
             }
 
-            println!("\n💾 Data saved to JSON file.");
+            info!("\n💾 Data saved to JSON file.");
         }
         Err(e) => {
-            eprintln!("❌ Error fetching seeing data: {}", e);
+            error!("❌ Error fetching seeing data: {}", e);
             std::process::exit(1);
         }
     }
