@@ -42,7 +42,7 @@ impl ForecastType {
     }
 
     /// Get the human-readable name for this forecast type
-    fn name(&self) -> &'static str {
+    pub fn name(&self) -> &'static str {
         match self {
             ForecastType::Cloud => "cloud",
             ForecastType::Seeing => "seeing",

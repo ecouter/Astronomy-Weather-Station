@@ -1,4 +1,6 @@
 import { VerticalBox, Button, HorizontalBox } from "std-widgets.slint";
+import { IconButton } from "../../material-1.0/ui/components/icon_button.slint";
+import { Icons } from "../../material-1.0/ui/icons/icons.slint";
 
 export component EnvironmentCanadaPage inherits Rectangle {
     background: #1c1c1c;
@@ -10,10 +12,29 @@ export component EnvironmentCanadaPage inherits Rectangle {
     in property <image> temperature_image;
     in property <image> transparency_image;
     in property <image> relative_humidity_image;
+    in property <string> clouds_counter;
+    in property <string> surface_wind_counter;
+    in property <string> seeing_counter;
+    in property <string> temperature_counter;
+    in property <string> transparency_counter;
+    in property <string> relative_humidity_counter;
+    in property <string> model_run_info;
     in-out property <bool> show_zoomed_image: false;
     in-out property <image> zoomed_image;
     in-out property <string> zoomed_title;
     callback go_back();
+    callback clouds_previous();
+    callback clouds_next();
+    callback surface_wind_previous();
+    callback surface_wind_next();
+    callback seeing_previous();
+    callback seeing_next();
+    callback temperature_previous();
+    callback temperature_next();
+    callback transparency_previous();
+    callback transparency_next();
+    callback relative_humidity_previous();
+    callback relative_humidity_next();
 
     VerticalLayout {
         padding-left: 25px;
@@ -30,7 +51,7 @@ export component EnvironmentCanadaPage inherits Rectangle {
                 clicked => { go_back(); }
             }
             Text {
-                text: "Environment Canada Astro predictions";
+                text: "Environment Canada Astro predictions" + (model_run_info != "" ? " (" + model_run_info + ")" : "");
                 font-size: 36px;
                 color: #ffffff;
                 horizontal-alignment: center;
@@ -46,12 +67,38 @@ export component EnvironmentCanadaPage inherits Rectangle {
             VerticalLayout {
                 spacing:10px;
 
-                Text {
-                    text: "Clouds";
-                    font-size: 24px;
-                    color: #ffffff;
-                    horizontal-alignment: center;
+                // Clouds navigation buttons
+                HorizontalBox {
                     height: 30px;
+                    alignment: center;
+                    spacing: 0px;
+
+                    IconButton {
+                        icon: Icons.chevron_backward;
+                        tooltip: "Previous forecast";
+                        clicked => {
+                            clouds_previous();
+                        }
+                    }
+
+                    IconButton {
+                        icon: Icons.chevron_forward;
+                        tooltip: "Next forecast";
+                        clicked => {
+                            clouds_next();
+                        }
+                    }
+
+                    // Title
+                    Text {
+                        text: "Clouds";
+                        color: #ffffff;
+                        font-size: 24px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: top;
+                        height: 30px;
+                    }
                 }
 
                 TouchArea {
@@ -63,6 +110,19 @@ export component EnvironmentCanadaPage inherits Rectangle {
                         height: 100%;
                         image-fit: fill;
                     }
+
+                    // Counter overlay
+                    Text {
+                        text: clouds_counter;
+                        color: #ff0000;
+                        font-size: 24px;
+                        font-weight: 700;
+                        horizontal-alignment: left;
+                        vertical-alignment: top;
+                        x: 10px;
+                        y: 10px;
+                    }
+
                     clicked => {
                         zoomed_image = clouds_image;
                         zoomed_title = "Clouds";
@@ -70,12 +130,38 @@ export component EnvironmentCanadaPage inherits Rectangle {
                     }
                 }
 
-                Text {
-                    text: "Surface Wind";
-                    font-size: 24px;
-                    color: #ffffff;
-                    horizontal-alignment: center;
+                // Surface Wind navigation buttons
+                HorizontalBox {
                     height: 30px;
+                    alignment: center;
+                    spacing: 0px;
+
+                    IconButton {
+                        icon: Icons.chevron_backward;
+                        tooltip: "Previous forecast";
+                        clicked => {
+                            surface_wind_previous();
+                        }
+                    }
+
+                    IconButton {
+                        icon: Icons.chevron_forward;
+                        tooltip: "Next forecast";
+                        clicked => {
+                            surface_wind_next();
+                        }
+                    }
+
+                    // Title
+                    Text {
+                        text: "Surface Wind";
+                        color: #ffffff;
+                        font-size: 24px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: top;
+                        height: 30px;
+                    }
                 }
 
                 TouchArea {
@@ -87,6 +173,19 @@ export component EnvironmentCanadaPage inherits Rectangle {
                         height: 100%;
                         image-fit: fill;
                     }
+
+                    // Counter overlay
+                    Text {
+                        text: surface_wind_counter;
+                        color: #ff0000;
+                        font-size: 24px;
+                        font-weight: 700;
+                        horizontal-alignment: left;
+                        vertical-alignment: top;
+                        x: 10px;
+                        y: 10px;
+                    }
+
                     clicked => {
                         zoomed_image = surface_wind_image;
                         zoomed_title = "Surface Wind";
@@ -99,12 +198,38 @@ export component EnvironmentCanadaPage inherits Rectangle {
             VerticalLayout {
                 spacing: 10px;
 
-                Text {
-                    text: "Seeing";
-                    font-size: 24px;
-                    color: #ffffff;
-                    horizontal-alignment: center;
+                // Seeing navigation buttons
+                HorizontalBox {
+                    alignment: center;
+                    spacing: 0px;
                     height: 30px;
+
+                    IconButton {
+                        icon: Icons.chevron_backward;
+                        tooltip: "Previous forecast";
+                        clicked => {
+                            seeing_previous();
+                        }
+                    }
+
+                    IconButton {
+                        icon: Icons.chevron_forward;
+                        tooltip: "Next forecast";
+                        clicked => {
+                            seeing_next();
+                        }
+                    }
+
+                    // Title
+                    Text {
+                        text: "Seeing";
+                        color: #ffffff;
+                        font-size: 24px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: top;
+                        height: 30px;
+                    }
                 }
 
                 TouchArea {
@@ -116,6 +241,19 @@ export component EnvironmentCanadaPage inherits Rectangle {
                         height: 100%;
                         image-fit: fill;
                     }
+
+                    // Counter overlay
+                    Text {
+                        text: seeing_counter;
+                        color: #ff0000;
+                        font-size: 24px;
+                        font-weight: 700;
+                        horizontal-alignment: left;
+                        vertical-alignment: top;
+                        x: 10px;
+                        y: 10px;
+                    }
+
                     clicked => {
                         zoomed_image = seeing_image;
                         zoomed_title = "Seeing";
@@ -123,12 +261,38 @@ export component EnvironmentCanadaPage inherits Rectangle {
                     }
                 }
 
-                Text {
-                    text: "Temperature";
-                    font-size: 24px;
-                    color: #ffffff;
-                    horizontal-alignment: center;
+                // Temperature navigation buttons
+                HorizontalBox {
+                    alignment: center;
+                    spacing: 0px;
                     height: 30px;
+
+                    IconButton {
+                        icon: Icons.chevron_backward;
+                        tooltip: "Previous forecast";
+                        clicked => {
+                            temperature_previous();
+                        }
+                    }
+
+                    IconButton {
+                        icon: Icons.chevron_forward;
+                        tooltip: "Next forecast";
+                        clicked => {
+                            temperature_next();
+                        }
+                    }
+
+                    // Title
+                    Text {
+                        text: "Temperature";
+                        color: #ffffff;
+                        font-size: 24px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: top;
+                        height: 30px;
+                    }
                 }
 
                 TouchArea {
@@ -140,6 +304,19 @@ export component EnvironmentCanadaPage inherits Rectangle {
                         height: 100%;
                         image-fit: fill;
                     }
+
+                    // Counter overlay
+                    Text {
+                        text: temperature_counter;
+                        color: #000000;
+                        font-size: 24px;
+                        font-weight: 700;
+                        horizontal-alignment: left;
+                        vertical-alignment: top;
+                        x: 10px;
+                        y: 10px;
+                    }
+
                     clicked => {
                         zoomed_image = temperature_image;
                         zoomed_title = "Temperature";
@@ -152,12 +329,38 @@ export component EnvironmentCanadaPage inherits Rectangle {
             VerticalLayout {
                 spacing: 10px;
 
-                Text {
-                    text: "Transparency";
-                    font-size: 24px;
-                    color: #ffffff;
-                    horizontal-alignment: center;
+                // Transparency navigation buttons
+                HorizontalBox {
                     height: 30px;
+                    alignment: center;
+                    spacing: 0px;
+
+                    IconButton {
+                        icon: Icons.chevron_backward;
+                        tooltip: "Previous forecast";
+                        clicked => {
+                            transparency_previous();
+                        }
+                    }
+
+                    IconButton {
+                        icon: Icons.chevron_forward;
+                        tooltip: "Next forecast";
+                        clicked => {
+                            transparency_next();
+                        }
+                    }
+
+                    // Title
+                    Text {
+                        text: "Transparency";
+                        color: #ffffff;
+                        font-size: 24px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: top;
+                        height: 30px;
+                    }
                 }
 
                 TouchArea {
@@ -169,6 +372,19 @@ export component EnvironmentCanadaPage inherits Rectangle {
                         height: 100%;
                         image-fit: fill;
                     }
+
+                    // Counter overlay
+                    Text {
+                        text: transparency_counter;
+                        color: #ff0000;
+                        font-size: 24px;
+                        font-weight: 700;
+                        horizontal-alignment: left;
+                        vertical-alignment: top;
+                        x: 10px;
+                        y: 10px;
+                    }
+
                     clicked => {
                         zoomed_image = transparency_image;
                         zoomed_title = "Transparency";
@@ -176,12 +392,38 @@ export component EnvironmentCanadaPage inherits Rectangle {
                     }
                 }
 
-                Text {
-                    text: "Relative Humidity";
-                    font-size: 24px;
-                    color: #ffffff;
-                    horizontal-alignment: center;
+                // Relative Humidity navigation buttons
+                HorizontalBox {
                     height: 30px;
+                    alignment: center;
+                    spacing: 0px;
+
+                    IconButton {
+                        icon: Icons.chevron_backward;
+                        tooltip: "Previous forecast";
+                        clicked => {
+                            relative_humidity_previous();
+                        }
+                    }
+
+                    IconButton {
+                        icon: Icons.chevron_forward;
+                        tooltip: "Next forecast";
+                        clicked => {
+                            relative_humidity_next();
+                        }
+                    }
+
+                    // Title
+                    Text {
+                        text: "Relative Humidity";
+                        color: #ffffff;
+                        font-size: 24px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: top;
+                        height: 30px;
+                    }
                 }
 
                 TouchArea {
@@ -193,6 +435,19 @@ export component EnvironmentCanadaPage inherits Rectangle {
                         height: 100%;
                         image-fit: fill;
                     }
+
+                    // Counter overlay
+                    Text {
+                        text: relative_humidity_counter;
+                        color: #000000;
+                        font-size: 24px;
+                        font-weight: 700;
+                        horizontal-alignment: left;
+                        vertical-alignment: top;
+                        x: 10px;
+                        y: 10px;
+                    }
+
                     clicked => {
                         zoomed_image = relative_humidity_image;
                         zoomed_title = "Relative Humidity";

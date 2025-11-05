@@ -73,6 +73,13 @@ export component MainWindow inherits Window {
     in property <image> env_temperature_image;
     in property <image> env_transparency_image;
     in property <image> env_relative_humidity_image;
+    in property <string> env_clouds_counter;
+    in property <string> env_surface_wind_counter;
+    in property <string> env_seeing_counter;
+    in property <string> env_temperature_counter;
+    in property <string> env_transparency_counter;
+    in property <string> env_relative_humidity_counter;
+    in property <string> env_model_run_info;
     in property <image> nina_image1;
     in property <image> nina_image2;
     in property <image> nina_image3;
@@ -103,6 +110,18 @@ export component MainWindow inherits Window {
     callback cloud_cover_next();
     callback wind_previous();
     callback wind_next();
+    callback env_canada_clouds_previous();
+    callback env_canada_clouds_next();
+    callback env_canada_surface_wind_previous();
+    callback env_canada_surface_wind_next();
+    callback env_canada_seeing_previous();
+    callback env_canada_seeing_next();
+    callback env_canada_temperature_previous();
+    callback env_canada_temperature_next();
+    callback env_canada_transparency_previous();
+    callback env_canada_transparency_next();
+    callback env_canada_relative_humidity_previous();
+    callback env_canada_relative_humidity_next();
 
     if (!show_env_canada): HorizontalBox {
         // Left side: Cloud cover prediction (top portion, 1/3 width)
@@ -914,7 +933,26 @@ export component MainWindow inherits Window {
         temperature_image: env_temperature_image;
         transparency_image: env_transparency_image;
         relative_humidity_image: env_relative_humidity_image;
+        clouds_counter: env_clouds_counter;
+        surface_wind_counter: env_surface_wind_counter;
+        seeing_counter: env_seeing_counter;
+        temperature_counter: env_temperature_counter;
+        transparency_counter: env_transparency_counter;
+        relative_humidity_counter: env_relative_humidity_counter;
+        model_run_info: env_model_run_info;
         go_back => { show_env_canada = false; }
+        clouds_previous => { env_canada_clouds_previous(); }
+        clouds_next => { env_canada_clouds_next(); }
+        surface_wind_previous => { env_canada_surface_wind_previous(); }
+        surface_wind_next => { env_canada_surface_wind_next(); }
+        seeing_previous => { env_canada_seeing_previous(); }
+        seeing_next => { env_canada_seeing_next(); }
+        temperature_previous => { env_canada_temperature_previous(); }
+        temperature_next => { env_canada_temperature_next(); }
+        transparency_previous => { env_canada_transparency_previous(); }
+        transparency_next => { env_canada_transparency_next(); }
+        relative_humidity_previous => { env_canada_relative_humidity_previous(); }
+        relative_humidity_next => { env_canada_relative_humidity_next(); }
     }
 
     if (show_nina): NinaPage {
