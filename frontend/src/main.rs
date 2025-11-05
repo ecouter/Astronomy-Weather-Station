@@ -295,7 +295,8 @@ fn main() -> Result<(), slint::PlatformError> {
                             }
                             debug!("New index: {}", *index);
                             let current_image_data = &images[*index];
-                            let counter_text = format!("+{}h", *index + 1);
+                            let model_run_str = ENV_CANADA_MODEL_RUN_STR.lock().unwrap();
+                            let counter_text = calculate_env_canada_forecast_time(&model_run_str, *index, false);
                             match decode_png_to_slint_image(current_image_data) {
                                 Ok(slint_image) => {
                                     window.set_env_clouds_image(slint_image);
@@ -337,7 +338,8 @@ fn main() -> Result<(), slint::PlatformError> {
                             *index = (*index + 1) % images.len();
                             debug!("New index: {}", *index);
                             let current_image_data = &images[*index];
-                            let counter_text = format!("+{}h", *index + 1);
+                            let model_run_str = ENV_CANADA_MODEL_RUN_STR.lock().unwrap();
+                            let counter_text = calculate_env_canada_forecast_time(&model_run_str, *index, false);
                             match decode_png_to_slint_image(current_image_data) {
                                 Ok(slint_image) => {
                                     window.set_env_clouds_image(slint_image);
@@ -383,7 +385,8 @@ fn main() -> Result<(), slint::PlatformError> {
                             }
                             debug!("New index: {}", *index);
                             let current_image_data = &images[*index];
-                            let counter_text = format!("+{}h", *index + 1);
+                            let model_run_str = ENV_CANADA_MODEL_RUN_STR.lock().unwrap();
+                            let counter_text = calculate_env_canada_forecast_time(&model_run_str, *index, false);
                             match decode_png_to_slint_image(current_image_data) {
                                 Ok(slint_image) => {
                                     window.set_env_surface_wind_image(slint_image);
@@ -425,7 +428,8 @@ fn main() -> Result<(), slint::PlatformError> {
                             *index = (*index + 1) % images.len();
                             debug!("New index: {}", *index);
                             let current_image_data = &images[*index];
-                            let counter_text = format!("+{}h", *index + 1);
+                            let model_run_str = ENV_CANADA_MODEL_RUN_STR.lock().unwrap();
+                            let counter_text = calculate_env_canada_forecast_time(&model_run_str, *index, false);
                             match decode_png_to_slint_image(current_image_data) {
                                 Ok(slint_image) => {
                                     window.set_env_surface_wind_image(slint_image);
@@ -471,7 +475,8 @@ fn main() -> Result<(), slint::PlatformError> {
                             }
                             debug!("New index: {}", *index);
                             let current_image_data = &images[*index];
-                            let counter_text = format!("+{}h", (*index + 1) * 3);
+                            let model_run_str = ENV_CANADA_MODEL_RUN_STR.lock().unwrap();
+                            let counter_text = calculate_env_canada_forecast_time(&model_run_str, *index, true);
                             match decode_png_to_slint_image(current_image_data) {
                                 Ok(slint_image) => {
                                     window.set_env_seeing_image(slint_image);
@@ -513,7 +518,8 @@ fn main() -> Result<(), slint::PlatformError> {
                             *index = (*index + 1) % images.len();
                             debug!("New index: {}", *index);
                             let current_image_data = &images[*index];
-                            let counter_text = format!("+{}h", (*index + 1) * 3);
+                            let model_run_str = ENV_CANADA_MODEL_RUN_STR.lock().unwrap();
+                            let counter_text = calculate_env_canada_forecast_time(&model_run_str, *index, true);
                             match decode_png_to_slint_image(current_image_data) {
                                 Ok(slint_image) => {
                                     window.set_env_seeing_image(slint_image);
@@ -559,7 +565,8 @@ fn main() -> Result<(), slint::PlatformError> {
                             }
                             debug!("New index: {}", *index);
                             let current_image_data = &images[*index];
-                            let counter_text = format!("+{}h", *index + 1);
+                            let model_run_str = ENV_CANADA_MODEL_RUN_STR.lock().unwrap();
+                            let counter_text = calculate_env_canada_forecast_time(&model_run_str, *index, false);
                             match decode_png_to_slint_image(current_image_data) {
                                 Ok(slint_image) => {
                                     window.set_env_temperature_image(slint_image);
@@ -601,7 +608,8 @@ fn main() -> Result<(), slint::PlatformError> {
                             *index = (*index + 1) % images.len();
                             debug!("New index: {}", *index);
                             let current_image_data = &images[*index];
-                            let counter_text = format!("+{}h", *index + 1);
+                            let model_run_str = ENV_CANADA_MODEL_RUN_STR.lock().unwrap();
+                            let counter_text = calculate_env_canada_forecast_time(&model_run_str, *index, false);
                             match decode_png_to_slint_image(current_image_data) {
                                 Ok(slint_image) => {
                                     window.set_env_temperature_image(slint_image);
@@ -647,7 +655,8 @@ fn main() -> Result<(), slint::PlatformError> {
                             }
                             debug!("New index: {}", *index);
                             let current_image_data = &images[*index];
-                            let counter_text = format!("+{}h", *index + 1);
+                            let model_run_str = ENV_CANADA_MODEL_RUN_STR.lock().unwrap();
+                            let counter_text = calculate_env_canada_forecast_time(&model_run_str, *index, false);
                             match decode_png_to_slint_image(current_image_data) {
                                 Ok(slint_image) => {
                                     window.set_env_transparency_image(slint_image);
@@ -689,7 +698,8 @@ fn main() -> Result<(), slint::PlatformError> {
                             *index = (*index + 1) % images.len();
                             debug!("New index: {}", *index);
                             let current_image_data = &images[*index];
-                            let counter_text = format!("+{}h", *index + 1);
+                            let model_run_str = ENV_CANADA_MODEL_RUN_STR.lock().unwrap();
+                            let counter_text = calculate_env_canada_forecast_time(&model_run_str, *index, false);
                             match decode_png_to_slint_image(current_image_data) {
                                 Ok(slint_image) => {
                                     window.set_env_transparency_image(slint_image);
@@ -735,7 +745,8 @@ fn main() -> Result<(), slint::PlatformError> {
                             }
                             debug!("New index: {}", *index);
                             let current_image_data = &images[*index];
-                            let counter_text = format!("+{}h", *index + 1);
+                            let model_run_str = ENV_CANADA_MODEL_RUN_STR.lock().unwrap();
+                            let counter_text = calculate_env_canada_forecast_time(&model_run_str, *index, false);
                             match decode_png_to_slint_image(current_image_data) {
                                 Ok(slint_image) => {
                                     window.set_env_relative_humidity_image(slint_image);
@@ -777,7 +788,8 @@ fn main() -> Result<(), slint::PlatformError> {
                             *index = (*index + 1) % images.len();
                             debug!("New index: {}", *index);
                             let current_image_data = &images[*index];
-                            let counter_text = format!("+{}h", *index + 1);
+                            let model_run_str = ENV_CANADA_MODEL_RUN_STR.lock().unwrap();
+                            let counter_text = calculate_env_canada_forecast_time(&model_run_str, *index, false);
                             match decode_png_to_slint_image(current_image_data) {
                                 Ok(slint_image) => {
                                     window.set_env_relative_humidity_image(slint_image);
@@ -1162,6 +1174,8 @@ async fn update_environment_canada_images(main_window: &MainWindow) -> Result<()
     // Store model run info for display (convert UTC to local time)
     {
         let mut model_run_info = ENV_CANADA_MODEL_RUN_INFO.lock().unwrap();
+        let mut model_run_str_store = ENV_CANADA_MODEL_RUN_STR.lock().unwrap();
+        *model_run_str_store = model_run_str.clone();
         if let Ok(utc_hour) = &model_run_str[8..10].parse::<u32>() {
             // Convert UTC hour to local system timezone
             let utc_time = chrono::NaiveTime::from_hms_opt(*utc_hour, 0, 0).unwrap();
@@ -1236,6 +1250,28 @@ async fn update_environment_canada_images(main_window: &MainWindow) -> Result<()
         fetch_forecast_hours(&api, ForecastType::RelativeHumidity, &model_run_str, Region::Northeast, (1..=24).collect())
     )?;
 
+    // Calculate the current UTC time and set indices to the closest forecast time
+    let now = chrono::Utc::now();
+    let current_utc_hour = now.hour();
+
+    // Parse model run UTC hour
+    let model_run_utc_hour = model_run_str[8..10].parse::<u32>().unwrap_or(0);
+
+    // Calculate hours since model run in UTC
+    let hours_since_model_run = if current_utc_hour >= model_run_utc_hour {
+        current_utc_hour - model_run_utc_hour
+    } else {
+        (24 - model_run_utc_hour) + current_utc_hour
+    };
+
+    // Set indices to closest available forecast (capped at available images)
+    let clouds_index = (hours_since_model_run as usize).min(clouds_images.len().saturating_sub(1));
+    let surface_wind_index = (hours_since_model_run as usize).min(surface_wind_images.len().saturating_sub(1));
+    let seeing_index = ((hours_since_model_run / 3) as usize).min(seeing_images.len().saturating_sub(1));
+    let temperature_index = (hours_since_model_run as usize).min(temperature_images.len().saturating_sub(1));
+    let transparency_index = (hours_since_model_run as usize).min(transparency_images.len().saturating_sub(1));
+    let relative_humidity_index = (hours_since_model_run as usize).min(relative_humidity_images.len().saturating_sub(1));
+
     // Update global storage
     {
         let mut clouds_store = ENV_CANADA_CLOUDS_IMAGES.lock().unwrap();
@@ -1252,14 +1288,14 @@ async fn update_environment_canada_images(main_window: &MainWindow) -> Result<()
         *relative_humidity_store = relative_humidity_images;
     }
 
-    // Reset all indices to 0
+    // Set indices
     {
-        *ENV_CANADA_CLOUDS_INDEX.lock().unwrap() = 0;
-        *ENV_CANADA_SURFACE_WIND_INDEX.lock().unwrap() = 0;
-        *ENV_CANADA_SEEING_INDEX.lock().unwrap() = 0;
-        *ENV_CANADA_TEMPERATURE_INDEX.lock().unwrap() = 0;
-        *ENV_CANADA_TRANSPARENCY_INDEX.lock().unwrap() = 0;
-        *ENV_CANADA_RELATIVE_HUMIDITY_INDEX.lock().unwrap() = 0;
+        *ENV_CANADA_CLOUDS_INDEX.lock().unwrap() = clouds_index;
+        *ENV_CANADA_SURFACE_WIND_INDEX.lock().unwrap() = surface_wind_index;
+        *ENV_CANADA_SEEING_INDEX.lock().unwrap() = seeing_index;
+        *ENV_CANADA_TEMPERATURE_INDEX.lock().unwrap() = temperature_index;
+        *ENV_CANADA_TRANSPARENCY_INDEX.lock().unwrap() = transparency_index;
+        *ENV_CANADA_RELATIVE_HUMIDITY_INDEX.lock().unwrap() = relative_humidity_index;
     }
 
     // Update UI with first images
@@ -1922,12 +1958,60 @@ static ENV_CANADA_TRANSPARENCY_INDEX: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::n
 static ENV_CANADA_RELATIVE_HUMIDITY_IMAGES: Lazy<Mutex<Vec<Vec<u8>>>> = Lazy::new(|| Mutex::new(Vec::new()));
 static ENV_CANADA_RELATIVE_HUMIDITY_INDEX: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::new(0));
 static ENV_CANADA_MODEL_RUN_INFO: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
+static ENV_CANADA_MODEL_RUN_STR: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
 
 // Global cache for coordinates
 static CACHED_COORDINATES: Lazy<Mutex<Option<(f64, f64)>>> = Lazy::new(|| Mutex::new(None));
 
 // Flag to ensure coordinates popup is shown only once
 static COORDINATES_POPUP_SHOWN: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
+
+// Helper function to calculate local time for Environment Canada forecast images
+fn calculate_env_canada_forecast_time(model_run_str: &str, index: usize, is_seeing: bool) -> String {
+    // Parse the UTC hour from model run string (format: YYYYMMDDHH)
+    if let Ok(utc_hour) = &model_run_str[8..10].parse::<u32>() {
+        // Calculate the forecast hour offset
+        let hour_offset = if is_seeing {
+            (index + 1) * 3 // Seeing forecasts are every 3 hours
+        } else {
+            index + 1 // Other forecasts are every 1 hour
+        };
+
+        // Add the offset to the model run hour
+        let forecast_utc_hour = (*utc_hour + hour_offset as u32) % 24;
+
+        // Create a datetime for today at the forecast UTC hour
+        let now = chrono::Utc::now();
+        let forecast_utc_datetime = chrono::NaiveDateTime::new(
+            now.date_naive(),
+            chrono::NaiveTime::from_hms_opt(forecast_utc_hour, 0, 0).unwrap()
+        );
+
+        // Convert to UTC DateTime and then to local time
+        let utc_datetime = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(forecast_utc_datetime, chrono::Utc);
+        let local_datetime = utc_datetime.with_timezone(&chrono::Local);
+
+        // Format as H:MM AM/PM
+        let local_hour = local_datetime.hour();
+        let am_pm = if local_hour >= 12 { "PM" } else { "AM" };
+        let display_hour = if local_hour == 0 {
+            12
+        } else if local_hour > 12 {
+            local_hour - 12
+        } else {
+            local_hour
+        };
+
+        format!("{}:00 {}", display_hour, am_pm)
+    } else {
+        // Fallback if parsing fails
+        if is_seeing {
+            format!("+{}h", (index + 1) * 3)
+        } else {
+            format!("+{}h", index + 1)
+        }
+    }
+}
 
 async fn update_cloud_cover_images(main_window: &MainWindow) -> Result<(), Box<dyn std::error::Error>> {
     use geomet::{GeoMetAPI, BoundingBox};
@@ -2167,7 +2251,8 @@ fn update_env_canada_clouds_display(main_window: &MainWindow) {
 
     if !images.is_empty() && *index < images.len() && !images[*index].is_empty() {
         let current_image_data = &images[*index];
-        let counter_text = format!("+{}h", *index + 1);
+        let model_run_str = ENV_CANADA_MODEL_RUN_STR.lock().unwrap();
+        let counter_text = calculate_env_canada_forecast_time(&model_run_str, *index, false);
         debug!("Displaying Environment Canada clouds image (index: {})", *index);
 
         match decode_png_to_slint_image(current_image_data) {
@@ -2190,7 +2275,8 @@ fn update_env_canada_surface_wind_display(main_window: &MainWindow) {
 
     if !images.is_empty() && *index < images.len() && !images[*index].is_empty() {
         let current_image_data = &images[*index];
-        let counter_text = format!("+{}h", *index + 1);
+        let model_run_str = ENV_CANADA_MODEL_RUN_STR.lock().unwrap();
+        let counter_text = calculate_env_canada_forecast_time(&model_run_str, *index, false);
         debug!("Displaying Environment Canada surface wind image (index: {})", *index);
 
         match decode_png_to_slint_image(current_image_data) {
@@ -2213,7 +2299,8 @@ fn update_env_canada_seeing_display(main_window: &MainWindow) {
 
     if !images.is_empty() && *index < images.len() && !images[*index].is_empty() {
         let current_image_data = &images[*index];
-        let counter_text = format!("+{}h", (*index + 1) * 3);
+        let model_run_str = ENV_CANADA_MODEL_RUN_STR.lock().unwrap();
+        let counter_text = calculate_env_canada_forecast_time(&model_run_str, *index, true);
         debug!("Displaying Environment Canada seeing image (index: {})", *index);
 
         match decode_png_to_slint_image(current_image_data) {
@@ -2236,7 +2323,8 @@ fn update_env_canada_temperature_display(main_window: &MainWindow) {
 
     if !images.is_empty() && *index < images.len() && !images[*index].is_empty() {
         let current_image_data = &images[*index];
-        let counter_text = format!("+{}h", *index + 1);
+        let model_run_str = ENV_CANADA_MODEL_RUN_STR.lock().unwrap();
+        let counter_text = calculate_env_canada_forecast_time(&model_run_str, *index, false);
         debug!("Displaying Environment Canada temperature image (index: {})", *index);
 
         match decode_png_to_slint_image(current_image_data) {
@@ -2259,7 +2347,8 @@ fn update_env_canada_transparency_display(main_window: &MainWindow) {
 
     if !images.is_empty() && *index < images.len() && !images[*index].is_empty() {
         let current_image_data = &images[*index];
-        let counter_text = format!("+{}h", *index + 1);
+        let model_run_str = ENV_CANADA_MODEL_RUN_STR.lock().unwrap();
+        let counter_text = calculate_env_canada_forecast_time(&model_run_str, *index, false);
         debug!("Displaying Environment Canada transparency image (index: {})", *index);
 
         match decode_png_to_slint_image(current_image_data) {
@@ -2282,7 +2371,8 @@ fn update_env_canada_relative_humidity_display(main_window: &MainWindow) {
 
     if !images.is_empty() && *index < images.len() && !images[*index].is_empty() {
         let current_image_data = &images[*index];
-        let counter_text = format!("+{}h", *index + 1);
+        let model_run_str = ENV_CANADA_MODEL_RUN_STR.lock().unwrap();
+        let counter_text = calculate_env_canada_forecast_time(&model_run_str, *index, false);
         debug!("Displaying Environment Canada relative humidity image (index: {})", *index);
 
         match decode_png_to_slint_image(current_image_data) {
