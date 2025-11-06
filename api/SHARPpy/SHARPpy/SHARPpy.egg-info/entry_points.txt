@@ -1,0 +1,2 @@
+[console_scripts]
+sharppy = runsharp.full_gui:main

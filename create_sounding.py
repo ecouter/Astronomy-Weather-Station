@@ -14,6 +14,9 @@ import cfgrib
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
+import pickle
+import hashlib
+from datetime import datetime
 
 # Add SHARPpy to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'api', 'SHARPpy', 'SHARPpy'))
@@ -25,18 +28,125 @@ import sharppy.sharptab.winds as winds
 import sharppy.sharptab.utils as utils
 import sharppy.sharptab.params as params
 import sharppy.sharptab.thermo as thermo
-from sharppy.viz.skew import plotSkewT
-from sharppy.viz.hodo import plotHodo
-from sharppy.viz.thermo import plotText
-from sharppy.viz.kinematics import plotKinematics
-from sharppy.viz.watch import plotWatch
-from sharppy.viz.slinky import plotSlinky
-from sharppy.viz.advection import plotAdvection
-from sharppy.viz.stp import plotSTP
+
+# Import SHARPpy GUI components for complete rendering
+from sharppy.viz.SPCWindow import SPCWindow
+from sutils.config import Config
+from datetime import datetime
+import platform
+
+# Set up Qt for headless operation
+import os
+os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+from qtpy.QtWidgets import QApplication, QWidget
+from qtpy.QtCore import Qt, Signal
+QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
+QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
+
+# Import matplotlib plotting functions
+from sharppy.plot.skew import draw_title, draw_dry_adiabats, draw_mixing_ratio_lines, draw_moist_adiabats
+from sharppy.plot.skew import plot_wind_axes, plot_wind_barbs, draw_heights, plot_sig_levels
+from sharppy.plot.skew import draw_effective_inflow_layer, plotHodo, draw_hodo_inset
+from matplotlib.ticker import ScalarFormatter, MultipleLocator, NullFormatter
+from matplotlib.collections import LineCollection
+import matplotlib.transforms as transforms
+import matplotlib.gridspec as gridspec
+
+def get_cache_key(grib2_path, lat, lon):
+    """
+    Generate a cache key based on GRIB2 directory, coordinates, and file modification times.
+
+    Parameters:
+    grib2_path: Path to GRIB2 directory
+    lat: Latitude
+    lon: Longitude
+
+    Returns:
+    String cache key
+    """
+    if os.path.isdir(grib2_path):
+        # Get all relevant GRIB2 files
+        all_files = [os.path.join(grib2_path, f)
+                    for f in os.listdir(grib2_path)
+                    if f.endswith('.grib2')]
+        key_patterns = ['TMP_ISBL', 'RH_ISBL', 'HGT_ISBL', 'UGRD_ISBL', 'VGRD_ISBL']
+        grib2_files = sorted([f for f in all_files if any(pattern in f for pattern in key_patterns)][:50])
+
+        # Create hash based on file paths, modification times, and coordinates
+        hasher = hashlib.md5()
+        hasher.update(f"{grib2_path}:{lat}:{lon}".encode())
+
+        for grib_file in grib2_files:
+            if os.path.exists(grib_file):
+                mtime = os.path.getmtime(grib_file)
+                hasher.update(f"{grib_file}:{mtime}".encode())
+
+        return hasher.hexdigest()
+    else:
+        # Single file
+        if os.path.exists(grib2_path):
+            mtime = os.path.getmtime(grib2_path)
+            return hashlib.md5(f"{grib2_path}:{lat}:{lon}:{mtime}".encode()).hexdigest()
+        else:
+            return None
+
+
+def save_profile_cache(cache_key, profile_data):
+    """
+    Save profile data to cache file.
+
+    Parameters:
+    cache_key: Cache key string
+    profile_data: Profile data dictionary
+    """
+    cache_dir = os.path.join(os.path.dirname(__file__), 'cache')
+    os.makedirs(cache_dir, exist_ok=True)
+
+    cache_file = os.path.join(cache_dir, f"profile_{cache_key}.pkl")
+    with open(cache_file, 'wb') as f:
+        pickle.dump({
+            'timestamp': datetime.now(),
+            'data': profile_data
+        }, f)
+    print(f"Saved profile data to cache: {cache_file}")
+
+
+def load_profile_cache(cache_key):
+    """
+    Load profile data from cache if available and valid.
+
+    Parameters:
+    cache_key: Cache key string
+
+    Returns:
+    Profile data dictionary or None if cache miss/invalid
+    """
+    cache_dir = os.path.join(os.path.dirname(__file__), 'cache')
+    cache_file = os.path.join(cache_dir, f"profile_{cache_key}.pkl")
+
+    if not os.path.exists(cache_file):
+        return None
+
+    try:
+        with open(cache_file, 'rb') as f:
+            cached = pickle.load(f)
+
+        # Check if cache is less than 1 hour old
+        if (datetime.now() - cached['timestamp']).total_seconds() < 3600:
+            print(f"Loaded profile data from cache: {cache_file}")
+            return cached['data']
+        else:
+            print("Cache is stale, reprocessing...")
+            return None
+    except Exception as e:
+        print(f"Error loading cache: {e}")
+        return None
+
 
 def read_grib2_profile(grib2_files, lat, lon):
     """
     Read GRIB2 files and extract atmospheric profile at a specific location.
+    Uses caching to avoid reprocessing the same data.
 
     Parameters:
     grib2_files: List of GRIB2 file paths or directory containing GRIB2 files
@@ -46,15 +156,31 @@ def read_grib2_profile(grib2_files, lat, lon):
     Returns:
     Dictionary containing profile data
     """
+    # Determine the path for caching
+    if isinstance(grib2_files, str):
+        cache_path = grib2_files
+    else:
+        cache_path = grib2_files[0] if grib2_files else ""
+
+    # Check cache first
+    cache_key = get_cache_key(cache_path, lat, lon)
+    if cache_key:
+        cached_data = load_profile_cache(cache_key)
+        if cached_data is not None:
+            return cached_data
+
+    # Cache miss - process the data
+    print("Processing GRIB2 data (cache miss)...")
+
     if isinstance(grib2_files, str):
         if os.path.isdir(grib2_files):
             # Find all GRIB2 files in directory
             all_files = [os.path.join(grib2_files, f)
                         for f in os.listdir(grib2_files)
                         if f.endswith('.grib2')]
-            # For testing, limit to key files
-            key_patterns = ['AirTemp', 'RelativeHumidity', 'GeopotentialHeight', 'WindU', 'WindV']
-            grib2_files = [f for f in all_files if any(pattern in f for pattern in key_patterns)][:20]  # Limit to 20 files
+            # For testing, limit to key files - look for TMP, RH, HGT, UGRD, VGRD at isobaric levels
+            key_patterns = ['TMP_ISBL', 'RH_ISBL', 'HGT_ISBL', 'UGRD_ISBL', 'VGRD_ISBL']
+            grib2_files = [f for f in all_files if any(pattern in f for pattern in key_patterns)][:50]  # Limit to 50 files
             print(f"Processing {len(grib2_files)} key GRIB2 files out of {len(all_files)} total")
         else:
             grib2_files = [grib2_files]
@@ -67,14 +193,14 @@ def read_grib2_profile(grib2_files, lat, lon):
         try:
             print(f"Processing {grib_file}")
 
-            # Extract pressure level from filename (e.g., IsbL-1000 -> 1000 hPa)
+            # Extract pressure level from filename (e.g., TMP_ISBL_1000 -> 1000 hPa)
             import re
-            pres_match = re.search(r'IsbL-(\d+)', grib_file)
+            pres_match = re.search(r'ISBL_(\d+)', grib_file)
             if pres_match:
                 pressure_level = int(pres_match.group(1))
                 print(f"  Pressure level from filename: {pressure_level} hPa")
             else:
-                print(f"  Could not extract pressure level from filename")
+                print(f"  Could not extract pressure level from filename: {grib_file}")
                 continue
 
             ds = cfgrib.open_dataset(grib_file, backend_kwargs={'indexpath': ''})
@@ -175,7 +301,10 @@ def read_grib2_profile(grib2_files, lat, lon):
         if 'rh' in data:
             temp_c = data['temp']
             rh = data['rh']
-            dewpoint = thermo.wetbulb(pres, temp_c, rh * 100)
+            # Calculate dewpoint from temperature and relative humidity
+            # RH = 100 * e_s(td) / e_s(t), so e_s(td) = RH * e_s(t)
+            # td = temp_at_vappres(e_s(td))
+            dewpoint = thermo.temp_at_vappres(rh * thermo.vappres(temp_c))
             dewpoints.append(dewpoint)
         else:
             dewpoints.append(np.nan)
@@ -199,7 +328,7 @@ def read_grib2_profile(grib2_files, lat, lon):
 
     print(f"Final profile data: pressure={len(pressure_levels)}, temp={len(temperatures)}, height={len(heights)}")
 
-    return {
+    profile_data = {
         'pressure': np.array(pressure_levels),
         'temperature': np.array(temperatures),
         'dewpoint': np.array(dewpoints),
@@ -207,6 +336,12 @@ def read_grib2_profile(grib2_files, lat, lon):
         'v_wind': np.array(v_winds),
         'height': np.array(heights)
     }
+
+    # Save to cache
+    if cache_key:
+        save_profile_cache(cache_key, profile_data)
+
+    return profile_data
 
 
 def create_sharppy_profile(profile_data):
@@ -253,7 +388,7 @@ def create_sharppy_profile(profile_data):
     dwpc = profile_data['dewpoint'][valid_temp]
     dwpc = np.where(np.isnan(dwpc), tmpc - 10, dwpc)  # Default to 10C dewpoint depression
 
-    # Handle winds (may have NaNs)
+    # Handle winds (may have NaNs) - ensure no NaN values
     wspd = np.full_like(pres, 5.0)  # Default wind speed
     wdir = np.full_like(pres, 270.0)  # Default wind direction
 
@@ -261,9 +396,19 @@ def create_sharppy_profile(profile_data):
         u_wind = profile_data['u_wind'][valid_temp]
         v_wind = profile_data['v_wind'][valid_temp]
 
-        valid_wind = ~(np.isnan(u_wind) | np.isnan(v_wind))
-        if np.any(valid_wind):
-            wspd[valid_wind], wdir[valid_wind] = utils.comp2vec(u_wind[valid_wind], v_wind[valid_wind])
+        # Replace NaN values with defaults
+        u_wind = np.where(np.isnan(u_wind), 0.0, u_wind)
+        v_wind = np.where(np.isnan(v_wind), 0.0, v_wind)
+
+        # Calculate wind speed and direction
+        wspd_calc, wdir_calc = utils.comp2vec(u_wind, v_wind)
+
+        # Ensure no NaN or infinite values
+        wspd_calc = np.where(np.isfinite(wspd_calc) & (wspd_calc >= 0), wspd_calc, 5.0)
+        wdir_calc = np.where(np.isfinite(wdir_calc), wdir_calc, 270.0)
+
+        wspd = wspd_calc
+        wdir = wdir_calc
 
     print(f"Creating profile with {len(pres)} levels")
     print(f"Pressure range: {pres.min()} - {pres.max()} hPa")
@@ -343,146 +488,108 @@ def convert_profile_to_sharppy_format(profile_data, location="GRIB2", lat=45.0, 
     return "\n".join(full_data)
 
 
-def create_sounding_plot(prof, output_file='sounding.png', title='Atmospheric Sounding', use_gui=False):
+def create_sounding_plot(prof, output_file='sounding.png', title='Atmospheric Sounding'):
     """
-    Create a complete sounding overview plot and save as PNG.
+    Create a complete sounding overview plot using SHARPpy's full GUI.
 
     Parameters:
     prof: SHARPpy Profile object
     output_file: Output PNG file path
     title: Plot title
-    use_gui: If True, use full SHARPpy GUI for ~3MB image; if False, use simple matplotlib plot
     """
-    if use_gui:
-        # Use full SHARPpy GUI to generate comprehensive image
-        create_sharppy_gui_image(prof, output_file, title)
-    else:
-        # Create a simple matplotlib skew-T plot
-        create_simple_plot(prof, output_file, title)
+    # Use full SHARPpy GUI to generate comprehensive image
+    create_sharppy_gui_image(prof, output_file, title)
 
 
-def create_simple_plot(prof, output_file='sounding.png', title='Atmospheric Sounding'):
-    """
-    Create a simple matplotlib skew-T plot.
-    """
-    # Create a simple matplotlib skew-T plot
-    fig, ax = plt.subplots(figsize=(10, 8))
 
-    # Plot temperature and dewpoint
-    ax.plot(prof.tmpc, prof.pres, 'r-', linewidth=2, label='Temperature')
-    ax.plot(prof.dwpc, prof.pres, 'g-', linewidth=2, label='Dewpoint')
-
-    # Plot virtual temperature
-    ax.plot(prof.vtmp, prof.pres, 'r--', linewidth=1, alpha=0.7, label='Virtual Temp')
-
-    # Set up the plot
-    ax.set_xlabel('Temperature (°C)')
-    ax.set_ylabel('Pressure (hPa)')
-    ax.set_title(title)
-    ax.set_ylim(1050, 100)  # Reverse y-axis
-    ax.set_xlim(-60, 40)
-    ax.grid(True, alpha=0.3)
-
-    # Add some thermodynamic information
-    try:
-        pcl = params.parcelx(prof, flag=1)  # Surface parcel
-        info_text = f"""
-        Surface Parcel:
-        CAPE: {pcl.bplus:.0f} J/kg
-        CIN: {pcl.bminus:.0f} J/kg
-        LCL: {pcl.lclhght:.0f} m
-        LFC: {pcl.lfchght:.0f} m
-        EL: {pcl.elhght:.0f} m
-        """
-        ax.text(0.02, 0.98, info_text, transform=ax.transAxes,
-                verticalalignment='top', fontsize=10,
-                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-    except:
-        pass
-
-    ax.legend()
-    plt.tight_layout()
-    plt.savefig(output_file, dpi=150, bbox_inches='tight')
-    plt.close(fig)
-
-    print(f"Simple sounding plot saved to {output_file}")
 
 
 def create_sharppy_gui_image(prof, output_file='sounding.png', title='Atmospheric Sounding'):
     """
-    Use SHARPpy's full GUI to generate a comprehensive ~3MB image in headless mode.
+    Create a comprehensive sounding plot using SHARPpy's complete GUI rendering system.
+    This replicates the exact same output as the SHARPpy GUI when clicking "Generate Profiles".
     """
     try:
-        # Set up headless Qt environment
-        os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+        print("Creating comprehensive sounding plot using SHARPpy GUI...")
 
-        # Import Qt modules
-        from qtpy.QtWidgets import QApplication
-        from qtpy.QtCore import Qt
-
-        # Create QApplication if it doesn't exist
+        # Initialize Qt application for off-screen rendering
         app = QApplication.instance()
         if app is None:
             app = QApplication([])
 
-        # Set attributes for headless operation
-        app.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
-
-        # Import SHARPpy components
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'api', 'SHARPpy', 'SHARPpy'))
-
-        from sharppy.viz.SPCWindow import SPCWidget
-        from sutils.config import Config
+        # Create a ProfCollection to hold our profile (like the GUI does)
         import sharppy.sharptab.prof_collection as prof_collection
-        from datetime import datetime
-
-        # Create profile collection directly from the profile object
-        print("Creating profile collection...")
-        prof_coll = prof_collection.ProfCollection(
+        prof_col = prof_collection.ProfCollection(
             {'':[ prof ]},
-            [datetime.now()],
+            [ datetime.now() ],
         )
-        prof_coll.setMeta('loc', title.split()[-1] if len(title.split()) > 1 else "GRIB2")
-        prof_coll.setMeta('observed', True)
-        prof_coll.setMeta('base_time', datetime.now())
 
-        # Create config with a temporary config file
+        # Set metadata like the GUI does
+        prof_col.setMeta('model', 'GRIB2')
+        prof_col.setMeta('run', datetime.now())
+        prof_col.setMeta('base_time', datetime.now())  # Base time for forecast hour calculation
+        prof_col.setMeta('loc', title)
+        prof_col.setMeta('fhour', 0)  # Single profile, not a forecast
+        prof_col.setMeta('observed', False)  # This is model data
+
+        # Create configuration object with a temporary config file
         import tempfile
-        config_file = tempfile.mktemp(suffix='.ini')
-        config = Config(config_file)
+        temp_config = tempfile.NamedTemporaryFile(mode='w', suffix='.ini', delete=False)
+        temp_config.close()
 
-        # Initialize config with default preferences
+        config = Config(temp_config.name)
+
+        # Initialize preferences like the GUI does
         from sharppy.viz.preferences import PrefDialog
         PrefDialog.initConfig(config)
 
-        # Create SPCWidget (the main GUI component) without showing it
-        print("Creating SHARPpy GUI widget...")
-        spc_widget = SPCWidget(cfg=config)
+        # Initialize other config sections
+        config.initialize({
+            ('insets', 'left_inset'): 'SARS',
+            ('insets', 'right_inset'): 'STP STATS',
+            ('parcel_types', 'pcl1'): 'SFC',
+            ('parcel_types', 'pcl2'): 'ML',
+            ('parcel_types', 'pcl3'): 'FCST',
+            ('parcel_types', 'pcl4'): 'MU',
+            ('paths', 'save_img'): os.path.dirname(output_file) or os.getcwd(),
+            ('paths', 'save_txt'): os.path.dirname(output_file) or os.getcwd(),
+        })
 
-        # Add the profile collection
-        spc_widget.addProfileCollection(prof_coll, "GRIB2_Profile")
+        # Create a dummy parent object with the required signal and methods
+        class DummyParent(QWidget):
+            config_changed = Signal(Config)
 
-        # Give Qt time to layout the widget
-        app.processEvents()
+            def preferencesbox(self):
+                pass  # Dummy method
 
-        # Capture the widget as an image
-        print("Capturing GUI image...")
-        pixmap = spc_widget.grab()
+        dummy_parent = DummyParent()
 
-        # Save the image
-        success = pixmap.save(output_file, 'PNG', 100)
-        if success:
-            print(f"SHARPpy GUI image saved to {output_file} ({os.path.getsize(output_file)} bytes)")
+        # Create SPCWindow (off-screen) with dummy parent
+        spc_window = SPCWindow(parent=dummy_parent, cfg=config)
+
+        # Add the profile collection (this triggers all the GUI rendering)
+        spc_window.addProfileCollection(prof_col, focus=True)
+
+        # Save the complete GUI image using the same method as the GUI
+        spc_window.spc_widget.pixmapToFile(output_file)
+
+        # Check if file was actually created
+        if os.path.exists(output_file):
+            file_size = os.path.getsize(output_file)
+            print(f"SHARPpy GUI sounding plot saved to {output_file} ({file_size} bytes)")
         else:
-            print("Failed to save GUI image")
+            raise Exception(f"Failed to save image to {output_file}")
+
+        # Clean up
+        spc_window.close()
 
     except Exception as e:
-        print(f"Error in GUI image generation: {e}")
+        print(f"Error in SHARPpy GUI rendering: {e}")
         import traceback
         traceback.print_exc()
 
 
-def generate_sounding_overview(grib2_path, lat, lon, output_file='sounding.png', title=None, use_gui=False):
+def generate_sounding_overview(grib2_path, lat, lon, output_file='sounding.png', title=None):
     """
     Main function to generate a complete sounding overview from GRIB2 files.
 
@@ -492,7 +599,6 @@ def generate_sounding_overview(grib2_path, lat, lon, output_file='sounding.png',
     lon: Longitude of the sounding location
     output_file: Output PNG file path
     title: Plot title (auto-generated if None)
-    use_gui: If True, use full SHARPpy GUI for ~3MB comprehensive image; if False, use simple matplotlib plot
     """
     print(f"Generating sounding for location {lat}N, {lon}E")
 
@@ -512,27 +618,78 @@ def generate_sounding_overview(grib2_path, lat, lon, output_file='sounding.png',
         title = f"Atmospheric Sounding - {lat:.2f}N, {lon:.2f}E"
 
     # Create and save plot
-    create_sounding_plot(prof, output_file, title, use_gui=use_gui)
+    create_sounding_plot(prof, output_file, title)
 
     return output_file
 
 
-if __name__ == '__main__':
-    # Example usage - test both simple and GUI versions
-    grib2_dir = 'model_data/grib2/dd.weather.gc.ca/today/model_rdps/10km/00/000'
+def create_mock_profile():
+    """
+    Create a mock atmospheric profile for testing purposes.
+    """
+    # Create a simple atmospheric profile similar to a typical summer day
+    pressures = np.array([1000, 950, 900, 850, 800, 750, 700, 650, 600, 550, 500, 450, 400, 350, 300, 250, 200])
+    temperatures = np.array([25, 20, 15, 10, 5, 0, -5, -10, -15, -20, -25, -30, -35, -40, -45, -50, -55])
+    dewpoints = np.array([20, 15, 10, 5, 0, -5, -10, -15, -20, -25, -30, -40, -50, -60, -70, -80, -90])
+    heights = np.array([0, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5500, 6500, 7500, 8500, 9500, 11000, 12000])
+    u_winds = np.array([5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85])
+    v_winds = np.array([0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80])
+
+    return {
+        'pressure': pressures,
+        'temperature': temperatures,
+        'dewpoint': dewpoints,
+        'u_wind': u_winds,
+        'v_wind': v_winds,
+        'height': heights
+    }
+
+
+def test_with_mock_data():
+    """
+    Test the sounding generation with mock data.
+    """
+    print("=== Testing with Mock Data ===")
+
+    # Create mock profile data
+    profile_data = create_mock_profile()
+
+    # Create SHARPpy profile
+    prof = create_sharppy_profile(profile_data)
+
+    # Generate SHARPpy GUI plot
+    print("Generating SHARPpy GUI plot...")
+    create_sounding_plot(prof, output_file='sounding_mock.png', title='Mock Atmospheric Sounding')
+
+    print("Test completed!")
+
+
+def test_with_grib2_data():
+    """
+    Test the sounding generation with real GRIB2 data.
+    """
+    print("=== Testing with Real GRIB2 Data ===")
+
+    # Use the GRIB2 directory
+    grib2_dir = 'model_data/grib2'
     lat, lon = 45.0, -75.0  # Ottawa, Canada
 
     try:
-        # Test simple plot first
-        print("=== Testing Simple Plot ===")
-        simple_file = generate_sounding_overview(grib2_dir, lat, lon, output_file='sounding_simple.png', use_gui=False)
-        print(f"Success! Simple plot saved to {simple_file}")
+        # Generate SHARPpy GUI plot from GRIB2 data
+        print("Generating SHARPpy GUI plot from GRIB2 data...")
+        output_file = generate_sounding_overview(grib2_dir, lat, lon, output_file='sounding_grib2.png')
+        print(f"Success! SHARPpy GUI plot saved to {output_file}")
 
-        # Test GUI plot (may not work in headless environment)
-        print("\n=== Testing GUI Plot ===")
-        gui_file = generate_sounding_overview(grib2_dir, lat, lon, output_file='sounding_gui.png', use_gui=True)
-        print(f"Success! GUI plot saved to {gui_file}")
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
 
+
+if __name__ == '__main__':
+    # Test with real GRIB2 data
+    try:
+        test_with_grib2_data()
     except Exception as e:
         print(f"Error: {e}")
         import traceback
