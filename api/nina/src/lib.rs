@@ -1,4 +1,9 @@
+#[macro_use] extern crate log;
+
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use futures_util::StreamExt;
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 /// Generic API response wrapper from NINA
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,6 +114,54 @@ pub struct PreparedImageParams {
     pub auto_prepare: Option<bool>,
 }
 
+/// Image statistics from websocket events
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageStatistics {
+    #[serde(rename = "ExposureTime")]
+    pub exposure_time: f64,
+    #[serde(rename = "Index")]
+    pub index: f64,
+    #[serde(rename = "Filter")]
+    pub filter: String,
+    #[serde(rename = "RmsText")]
+    pub rms_text: String,
+    #[serde(rename = "Temperature")]
+    pub temperature: f64,
+    #[serde(rename = "CameraName")]
+    pub camera_name: String,
+    #[serde(rename = "Gain")]
+    pub gain: f64,
+    #[serde(rename = "Offset")]
+    pub offset: f64,
+    #[serde(rename = "Date")]
+    pub date: String,
+    #[serde(rename = "TelescopeName")]
+    pub telescope_name: String,
+    #[serde(rename = "FocalLength")]
+    pub focal_length: f64,
+    #[serde(rename = "StDev")]
+    pub st_dev: f64,
+    #[serde(rename = "Mean")]
+    pub mean: f64,
+    #[serde(rename = "Median")]
+    pub median: f64,
+    #[serde(rename = "Stars")]
+    pub stars: f64,
+    #[serde(rename = "HFR")]
+    pub hfr: f64,
+    #[serde(rename = "IsBayered")]
+    pub is_bayered: bool,
+}
+
+/// Image save event from websocket
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageSaveEvent {
+    #[serde(rename = "Event")]
+    pub event: String,
+    #[serde(rename = "ImageStatistics")]
+    pub image_statistics: ImageStatistics,
+}
+
 /// Fetch guiding graph data from NINA
 pub async fn fetch_guiding_graph(base_url: &str) -> Result<GuideStepsHistory, anyhow::Error> {
     let url = format!("{}/equipment/guider/graph", base_url.trim_end_matches('/'));
@@ -174,4 +227,75 @@ pub async fn fetch_prepared_image(base_url: &str, params: &PreparedImageParams) 
     let response = client.get(&url).send().await?;
     let bytes = response.bytes().await?;
     Ok(bytes.to_vec())
+}
+
+/// Spawn a websocket listener for a NINA instance
+/// Returns a JoinHandle that can be used to stop the listener
+pub fn spawn_nina_websocket_listener<F>(
+    base_url: String,
+    on_image_save: F,
+) -> tokio::task::JoinHandle<()>
+where
+    F: Fn(ImageSaveEvent) + Send + Sync + 'static,
+{
+    let on_image_save = Arc::new(on_image_save);
+
+    tokio::spawn(async move {
+        let ws_url = format!("ws://{}/v2", base_url.trim_start_matches("http://").trim_start_matches("https://"));
+
+        info!("Connecting to NINA websocket at: {}", ws_url);
+
+        loop {
+            match connect_async(&ws_url).await {
+                Ok((ws_stream, _)) => {
+                    info!("Connected to NINA websocket at: {}", ws_url);
+                    let (_write, mut read) = ws_stream.split();
+
+                    // Send subscription message if needed (based on NINA API docs)
+                    // For now, we'll just listen for all events
+
+                    while let Some(message) = read.next().await {
+                        match message {
+                            Ok(Message::Text(text)) => {
+                                // Parse the websocket message
+                                if let Ok(nina_response) = serde_json::from_str::<NinaResponse<ImageSaveEvent>>(&text) {
+                                    if nina_response.success && nina_response.r#type == "Socket" {
+                                        let event = &nina_response.response;
+                                        if event.event == "IMAGE-SAVE" {
+                                            info!("Received IMAGE-SAVE event from {}: {:?}", base_url, event);
+                                            on_image_save(event.clone());
+                                        }
+                                    }
+                                } else {
+                                    // Try parsing as direct ImageSaveEvent (in case the wrapper isn't used for websockets)
+                                    if let Ok(event) = serde_json::from_str::<ImageSaveEvent>(&text) {
+                                        if event.event == "IMAGE-SAVE" {
+                                            info!("Received IMAGE-SAVE event from {}: {:?}", base_url, event);
+                                            on_image_save(event);
+                                        }
+                                    }
+                                }
+                            }
+                            Ok(Message::Close(_)) => {
+                                info!("NINA websocket connection closed for: {}", ws_url);
+                                break;
+                            }
+                            Err(e) => {
+                                error!("Error receiving websocket message from {}: {}", ws_url, e);
+                                break;
+                            }
+                            _ => {} // Ignore other message types
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to connect to NINA websocket at {}: {}", ws_url, e);
+                }
+            }
+
+            // Wait before reconnecting
+            info!("Reconnecting to NINA websocket in 5 seconds...");
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+        }
+    })
 }

@@ -44,6 +44,25 @@ fn main() -> Result<(), slint::PlatformError> {
     app::environment_canada::setup_environment_canada_callbacks(&main_window);
     app::sounding::setup_sounding_callbacks(&main_window);
 
+    // Set up NINA URL change callback handler
+    let main_window_weak_nina = main_window.as_weak();
+    main_window.on_nina_url_saved(move |index| {
+        let window = main_window_weak_nina.upgrade();
+        if let Some(window) = window {
+            let url_index = index as usize;
+            let url = match url_index {
+                0 => window.get_nina_url1().to_string(),
+                1 => window.get_nina_url2().to_string(),
+                2 => window.get_nina_url3().to_string(),
+                3 => window.get_nina_url4().to_string(),
+                4 => window.get_nina_url5().to_string(),
+                5 => window.get_nina_url6().to_string(),
+                _ => return,
+            };
+            app::nina::handle_nina_url_change(url_index, url, &window);
+        }
+    });
+
     main_window.set_loading(false); // Show UI immediately, loading happens asynchronously
 
     // Channel for initial data loading
@@ -267,6 +286,8 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
+
+
     // Handle cloud cover updates directly in the main thread using invoke_from_event_loop
     let main_window_weak = main_window.as_weak();
     let lat3 = lat;
@@ -353,22 +374,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         }
                     }).unwrap();
                 }
-                "nina_update" => {
-                    info!("Processing NINA update signal");
-                    // Use invoke_from_event_loop to run async code in the UI thread
-                    slint::invoke_from_event_loop(move || {
-                        let rt = tokio::runtime::Runtime::new().unwrap();
-                        let window = window_weak.upgrade();
-                        if let Some(window) = window {
-                            rt.block_on(async {
-                                if let Err(e) = app::nina::update_nina_images(&window).await {
-                                    error!("Failed to update NINA images: {}", e);
-                                    window.set_error_message(format!("Failed to update NINA images: {}", e).into());
-                                }
-                            });
-                        }
-                    }).unwrap();
-                }
+
                 "cycle" => {
                     info!("Processing cloud cycle signal");
                     // Use invoke_from_event_loop to update UI in the UI thread

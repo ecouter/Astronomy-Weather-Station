@@ -735,11 +735,7 @@ pub async fn update_environment_canada_images(main_window: &MainWindow) -> Resul
         main_window.set_env_model_run_info(model_run_info.clone().into());
     }
 
-    // Load initial Nina images
-    if let Err(e) = crate::app::nina::update_nina_images(&main_window).await {
-        eprintln!("Failed to load Nina images: {}", e);
-        main_window.set_error_message(format!("Failed to load Nina images: {}", e).into());
-    }
+
 
     println!("Environment Canada images updated successfully");
     Ok(())

@@ -1,23 +1,20 @@
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
+use std::sync::Arc;
+use tokio::task::JoinHandle;
+use slint::ComponentHandle;
 use crate::MainWindow;
 use crate::app::utils::decode_png_to_slint_image;
 
-pub static NINA_URLS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(vec![
-    "http://localhost:1888".to_string(),
-    "http://localhost:1889".to_string(),
-    "http://localhost:1890".to_string(),
-    "http://localhost:1891".to_string(),
-    "http://localhost:1892".to_string(),
-    "http://localhost:1893".to_string(),
-]));
+// Store websocket handles for each NINA slot (0-5)
+pub static NINA_WEBSOCKET_HANDLES: Lazy<Mutex<Vec<Option<Arc<Mutex<Option<JoinHandle<()>>>>>>>> = Lazy::new(|| {
+    Mutex::new(vec![None; 6])
+});
 
-pub async fn update_nina_images(main_window: &MainWindow) -> Result<(), Box<dyn std::error::Error>> {
+/// Fetch and update a single NINA image for the given slot
+async fn update_single_nina_image(main_window: &MainWindow, slot_index: usize, base_url: &str) -> Result<(), Box<dyn std::error::Error>> {
     use nina::{fetch_prepared_image, PreparedImageParams};
 
-    println!("Updating Nina images...");
-
-    // Same parameters for all images
     let image_params = PreparedImageParams {
         resize: Some(true),
         quality: Some(80),
@@ -31,86 +28,104 @@ pub async fn update_nina_images(main_window: &MainWindow) -> Result<(), Box<dyn 
         auto_prepare: Some(true),
     };
 
-    // Get base URLs from storage
-    let base_urls = {
-        let urls = NINA_URLS.lock().unwrap();
-        urls.clone()
+    match fetch_prepared_image(base_url, &image_params).await {
+        Ok(image_data) => {
+            match decode_png_to_slint_image(&image_data) {
+                Ok(slint_image) => {
+                    match slot_index {
+                        0 => main_window.set_nina_image1(slint_image),
+                        1 => main_window.set_nina_image2(slint_image),
+                        2 => main_window.set_nina_image3(slint_image),
+                        3 => main_window.set_nina_image4(slint_image),
+                        4 => main_window.set_nina_image5(slint_image),
+                        5 => main_window.set_nina_image6(slint_image),
+                        _ => {}
+                    }
+                    info!("Updated NINA image for slot {}", slot_index + 1);
+                }
+                Err(e) => {
+                    error!("Failed to decode NINA image for slot {}: {}", slot_index + 1, e);
+                }
+            }
+        }
+        Err(e) => {
+            error!("Failed to fetch NINA image from {} for slot {}: {}", base_url, slot_index + 1, e);
+        }
+    }
+
+    Ok(())
+}
+
+/// Start websocket listener for a NINA slot
+pub fn start_nina_websocket(slot_index: usize, base_url: String, main_window: &MainWindow) {
+    // Stop existing websocket for this slot if any
+    stop_nina_websocket(slot_index);
+
+    let main_window_weak = main_window.as_weak();
+    let base_url_clone = base_url.clone();
+
+    // Create the callback that will be called when an image-save event is received
+    let on_image_save = move |_event: nina::ImageSaveEvent| {
+        let main_window_weak = main_window_weak.clone();
+        let base_url = base_url_clone.clone();
+
+        // Spawn a task to handle the image update in the UI thread
+        slint::invoke_from_event_loop(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let window = main_window_weak.upgrade();
+            if let Some(window) = window {
+                rt.block_on(async {
+                    if let Err(e) = update_single_nina_image(&window, slot_index, &base_url).await {
+                        error!("Failed to update NINA image for slot {}: {}", slot_index + 1, e);
+                    }
+                });
+            }
+        }).unwrap();
     };
 
-    // Set URL properties for UI
-    if base_urls.len() >= 6 {
-        main_window.set_nina_url1(base_urls[0].clone().into());
-        main_window.set_nina_url2(base_urls[1].clone().into());
-        main_window.set_nina_url3(base_urls[2].clone().into());
-        main_window.set_nina_url4(base_urls[3].clone().into());
-        main_window.set_nina_url5(base_urls[4].clone().into());
-        main_window.set_nina_url6(base_urls[5].clone().into());
+    // Spawn the websocket listener
+    let handle = nina::spawn_nina_websocket_listener(base_url, on_image_save);
+
+    // Store the handle
+    {
+        let mut handles = NINA_WEBSOCKET_HANDLES.lock().unwrap();
+        handles[slot_index] = Some(Arc::new(Mutex::new(Some(handle))));
     }
 
-    // Fetch images concurrently
-    let mut tasks = Vec::new();
-    for base_url in base_urls {
-        let params = image_params.clone();
-        let url = base_url.clone();
-        let task = tokio::spawn(async move {
-            match fetch_prepared_image(&url, &params).await {
-                Ok(data) => Some(data),
-                Err(e) => {
-                    eprintln!("Failed to fetch Nina prepared image from {}: {}", url, e);
-                    None
-                }
-            }
-        });
-        tasks.push(task);
-    }
+    info!("Started websocket listener for NINA slot {}", slot_index + 1);
+}
 
-    // Wait for all tasks to complete
-    let mut images_data = Vec::new();
-    for task in tasks {
-        if let Ok(Some(data)) = task.await {
-            images_data.push(data);
-        } else {
-            // Add empty data for failed fetches
-            images_data.push(Vec::new());
+/// Stop websocket listener for a NINA slot
+pub fn stop_nina_websocket(slot_index: usize) {
+    info!("Stopping websocket listener for NINA slot {}", slot_index + 1);
+    let mut handles = NINA_WEBSOCKET_HANDLES.lock().unwrap();
+    if let Some(handle_arc) = handles[slot_index].take() {
+        let mut handle_opt = handle_arc.lock().unwrap();
+        if let Some(handle) = handle_opt.take() {
+            handle.abort();
+            info!("Stopped websocket listener for NINA slot {}", slot_index + 1);
         }
     }
+}
 
-    // Decode and set images (only if we have data)
-    if images_data.len() >= 6 {
-        for i in 0..6 {
-            if !images_data[i].is_empty() {
-                match decode_png_to_slint_image(&images_data[i]) {
-                    Ok(slint_image) => {
-                        match i {
-                            0 => main_window.set_nina_image1(slint_image),
-                            1 => main_window.set_nina_image2(slint_image),
-                            2 => main_window.set_nina_image3(slint_image),
-                            3 => main_window.set_nina_image4(slint_image),
-                            4 => main_window.set_nina_image5(slint_image),
-                            5 => main_window.set_nina_image6(slint_image),
-                            _ => {}
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to decode Nina image {}: {}", i + 1, e);
-                    }
-                }
-            } else {
-                // Clear the image if no data was fetched
-                let empty_image = slint::Image::default();
-                match i {
-                    0 => main_window.set_nina_image1(empty_image),
-                    1 => main_window.set_nina_image2(empty_image),
-                    2 => main_window.set_nina_image3(empty_image),
-                    3 => main_window.set_nina_image4(empty_image),
-                    4 => main_window.set_nina_image5(empty_image),
-                    5 => main_window.set_nina_image6(empty_image),
-                    _ => {}
-                }
-            }
+/// Handle URL change for a NINA slot
+pub fn handle_nina_url_change(slot_index: usize, new_url: String, main_window: &MainWindow) {
+    if new_url.trim().is_empty() {
+        // Empty URL - stop websocket
+        stop_nina_websocket(slot_index);
+        // Clear the image
+        let empty_image = slint::Image::default();
+        match slot_index {
+            0 => main_window.set_nina_image1(empty_image),
+            1 => main_window.set_nina_image2(empty_image),
+            2 => main_window.set_nina_image3(empty_image),
+            3 => main_window.set_nina_image4(empty_image),
+            4 => main_window.set_nina_image5(empty_image),
+            5 => main_window.set_nina_image6(empty_image),
+            _ => {}
         }
+    } else {
+        // Valid URL - start websocket
+        start_nina_websocket(slot_index, new_url, main_window);
     }
-
-    println!("Nina images updated successfully");
-    Ok(())
 }

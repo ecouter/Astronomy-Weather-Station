@@ -54,9 +54,6 @@ pub async fn fetch_meteoblue_data(lat: f64, lon: f64) -> Result<Vec<SeeingData>,
     // Parse HTML and extract data
     let data = parse_seeing_table(&html)?;
 
-    // Save to JSON file
-    save_to_json(&data, lat, lon)?;
-
     Ok(data)
 }
 
@@ -206,45 +203,4 @@ pub fn parse_seeing_table(html: &str) -> Result<Vec<SeeingData>, anyhow::Error> 
     }
 
     Ok(seeing_data)
-}
-
-/// Save seeing data to JSON file, grouped by day
-fn save_to_json(data: &[SeeingData], lat: f64, lon: f64) -> Result<(), anyhow::Error> {
-    use std::collections::BTreeMap;
-
-    // Group data by day
-    let mut grouped_data: BTreeMap<String, Vec<&SeeingData>> = BTreeMap::new();
-    for item in data {
-        grouped_data.entry(item.day.clone()).or_insert_with(Vec::new).push(item);
-    }
-
-    // Convert to the final structure
-    let mut final_data = serde_json::Map::new();
-    for (day, day_items) in grouped_data {
-        // Remove the "day" field from each item since it's now the key
-        let day_data: Vec<serde_json::Value> = day_items.iter().map(|item| {
-            let mut map = serde_json::Map::new();
-            map.insert("hour".to_string(), serde_json::json!(item.hour));
-            map.insert("clouds_low_pct".to_string(), serde_json::json!(item.clouds_low_pct));
-            map.insert("clouds_mid_pct".to_string(), serde_json::json!(item.clouds_mid_pct));
-            map.insert("clouds_high_pct".to_string(), serde_json::json!(item.clouds_high_pct));
-            map.insert("seeing_arcsec".to_string(), serde_json::json!(item.seeing_arcsec));
-            map.insert("index1".to_string(), serde_json::json!(item.index1));
-            map.insert("index2".to_string(), serde_json::json!(item.index2));
-            map.insert("jetstream_ms".to_string(), serde_json::json!(item.jetstream_ms));
-            map.insert("bad_layers_bot_km".to_string(), serde_json::json!(item.bad_layers_bot_km));
-            map.insert("bad_layers_top_km".to_string(), serde_json::json!(item.bad_layers_top_km));
-            map.insert("bad_layers_k_per_100m".to_string(), serde_json::json!(item.bad_layers_k_per_100m));
-            map.insert("temp_c".to_string(), serde_json::json!(item.temp_c));
-            map.insert("humidity_pct".to_string(), serde_json::json!(item.humidity_pct));
-            serde_json::Value::Object(map)
-        }).collect();
-        final_data.insert(day, serde_json::Value::Array(day_data));
-    }
-
-    let filename = format!("meteoblue_data.json");
-    let json_data = serde_json::to_string_pretty(&final_data)?;
-    let mut file = File::create(filename)?;
-    file.write_all(json_data.as_bytes())?;
-    Ok(())
 }

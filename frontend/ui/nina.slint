@@ -26,6 +26,7 @@ export component NinaPage inherits Rectangle {
     in-out property <int> url_index: -1;
     callback go_back();
     callback url_saved(int);
+    callback nina_url_saved(int);
 
     VerticalLayout {
         padding-left: 25px;
@@ -399,7 +400,8 @@ export component NinaPage inherits Rectangle {
                                 else if current_image_index == 4 { url5 = current_url; }
                                 else if current_image_index == 5 { url6 = current_url; }
 
-                                url_saved(current_image_index);
+                                // Call the MainWindow callback to trigger websocket management
+                                nina_url_saved(current_image_index);
                                 show_url_popup = false;
                             }
                         }
