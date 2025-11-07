@@ -135,14 +135,11 @@ pub fn setup_wind_callbacks(main_window: &MainWindow) {
     });
 }
 
-pub async fn update_wind_images(main_window: &MainWindow) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn fetch_wind_images(lat: f64, lon: f64) -> Result<(Vec<Vec<u8>>, Vec<u8>), Box<dyn std::error::Error>> {
     use geomet::{GeoMetAPI, BoundingBox};
     use chrono::{Utc, Duration};
 
-    println!("Updating wind images...");
-
-    // Load coordinates
-    let (lat, lon) = crate::app::coordinates::load_coordinates(main_window)?;
+    println!("Fetching wind images...");
 
     // Calculate current UTC time, round to nearest hour for forecast
     let now = Utc::now();
@@ -202,17 +199,22 @@ pub async fn update_wind_images(main_window: &MainWindow) -> Result<(), Box<dyn 
 
     // Wait for legend task
     let legend_data = if let Ok(Some(data)) = legend_task.await {
-        Some(data)
+        data
     } else {
-        None
+        Vec::new()
     };
 
+    println!("Wind images fetched successfully ({} images, {} legend)", wind_images.len(), if legend_data.is_empty() { 0 } else { 1 });
+    Ok((wind_images, legend_data))
+}
+
+pub fn set_wind_images(main_window: &MainWindow, (images, legend): (Vec<Vec<u8>>, Vec<u8>)) {
     // Update global storage
     {
-        let mut images = WIND_IMAGES.lock().unwrap();
-        *images = wind_images;
+        let mut stored_images = WIND_IMAGES.lock().unwrap();
+        *stored_images = images;
     }
-    if let Some(legend) = legend_data {
+    {
         let mut legend_store = WIND_LEGEND.lock().unwrap();
         *legend_store = legend;
     }
@@ -225,9 +227,6 @@ pub async fn update_wind_images(main_window: &MainWindow) -> Result<(), Box<dyn 
 
     // Update UI with first image
     update_wind_display(main_window);
-
-    println!("Wind images updated successfully ({} images, {} legend)", WIND_IMAGES.lock().unwrap().len(), if WIND_LEGEND.lock().unwrap().is_empty() { 0 } else { 1 });
-    Ok(())
 }
 
 pub fn update_wind_display(main_window: &MainWindow) {

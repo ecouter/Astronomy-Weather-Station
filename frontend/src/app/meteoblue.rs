@@ -2,7 +2,6 @@ use std::rc::Rc;
 use slint::{VecModel};
 use chrono::Timelike;
 use crate::MainWindow;
-use crate::app::coordinates::load_coordinates;
 use crate::app::utils::parse_hour;
 
 #[derive(Clone)]
@@ -24,20 +23,16 @@ pub struct MeteoBlueNightData {
     humidity_pct: u8,
 }
 
-pub async fn update_meteoblue_data(main_window: &MainWindow, clearoutside_forecast: &clearoutside::ClearOutsideForecast) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn fetch_meteoblue_data(lat: f64, lon: f64, clearoutside_forecast: &clearoutside::ClearOutsideForecast) -> Result<Vec<MeteoBlueNightData>, Box<dyn std::error::Error>> {
     use meteoblue::fetch_meteoblue_data;
-
-    // Load coordinates
-    let (lat, lon) = load_coordinates(main_window)?;
 
     // Fetch meteoblue data
     let meteoblue_data = fetch_meteoblue_data(lat, lon).await?;
 
     // Process data for night hours display using ClearOutside sunrise/sunset
     let night_data = process_meteoblue_night_data(&meteoblue_data, clearoutside_forecast)?;
-    update_meteoblue_display(main_window, night_data);
 
-    Ok(())
+    Ok(night_data)
 }
 
 fn process_meteoblue_night_data(meteoblue_data: &[meteoblue::SeeingData], clearoutside_forecast: &clearoutside::ClearOutsideForecast) -> Result<Vec<MeteoBlueNightData>, Box<dyn std::error::Error>> {
@@ -152,7 +147,7 @@ fn process_meteoblue_night_data(meteoblue_data: &[meteoblue::SeeingData], clearo
     Ok(night_data)
 }
 
-fn update_meteoblue_display(main_window: &MainWindow, night_data: Vec<MeteoBlueNightData>) {
+pub fn set_meteoblue_data(main_window: &MainWindow, night_data: Vec<MeteoBlueNightData>) {
 
     // Group data by day
     use std::collections::HashMap;

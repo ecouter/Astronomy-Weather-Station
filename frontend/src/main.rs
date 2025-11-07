@@ -9,6 +9,18 @@ use std::time::Duration;
 use std::thread;
 use std::sync::mpsc;
 
+#[derive(Clone)]
+enum InitialDataMessage {
+    Weather(app::weather::WeatherData),
+    CloudCover(Vec<Vec<u8>>),
+    Wind((Vec<Vec<u8>>, Vec<u8>)),
+    ClearOutside(app::clearoutside::ClearOutsideData),
+    MeteoBlue(Vec<app::meteoblue::MeteoBlueNightData>),
+    Map(Vec<u8>),
+    ClearDarkSky(Vec<u8>),
+    Sounding(Vec<u8>),
+}
+
 fn main() -> Result<(), slint::PlatformError> {
     pretty_env_logger::init();
 
@@ -16,63 +28,138 @@ fn main() -> Result<(), slint::PlatformError> {
 
     let main_window = MainWindow::new()?;
 
+    // Load coordinates
+    let (lat, lon) = match app::coordinates::load_coordinates(&main_window) {
+        Ok(coords) => coords,
+        Err(e) => {
+            error!("Failed to load coordinates: {}", e);
+            main_window.set_error_message(format!("Failed to load coordinates: {}", e).into());
+            return Err(slint::PlatformError::Other("Failed to load coordinates".into()));
+        }
+    };
+
     // Set up callback handlers using the modular functions
     app::cloud_cover::setup_cloud_cover_callbacks(&main_window);
     app::wind::setup_wind_callbacks(&main_window);
     app::environment_canada::setup_environment_canada_callbacks(&main_window);
     app::sounding::setup_sounding_callbacks(&main_window);
 
-    // Start the async runtime for image fetching
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    main_window.set_loading(false); // Show UI immediately, loading happens asynchronously
 
-    // Initial image load
-    rt.block_on(async {
-        if let Err(e) = app::weather::update_weather_images(&main_window).await {
-            error!("Failed to load initial images: {}", e);
-            main_window.set_error_message(format!("Failed to load images: {}", e).into());
-        }
-        if let Err(e) = app::cloud_cover::update_cloud_cover_images(&main_window).await {
-            error!("Failed to load initial cloud cover images: {}", e);
-            main_window.set_error_message(format!("Failed to load cloud cover images: {}", e).into());
-        }
-        if let Err(e) = app::wind::update_wind_images(&main_window).await {
-            error!("Failed to load initial wind images: {}", e);
-            main_window.set_error_message(format!("Failed to load wind images: {}", e).into());
-        }
-        if let Err(e) = app::clearoutside::update_clearoutside_data(&main_window).await {
-            error!("Failed to load initial ClearOutside data: {}", e);
-            main_window.set_error_message(format!("Failed to load ClearOutside data: {}", e).into());
-        }
-        match app::map::load_map_image(&main_window).await {
-            Ok(map_image) => {
-                main_window.set_map_image(map_image);
-            }
-            Err(e) => {
-                error!("Failed to load map image: {}", e);
-                main_window.set_error_message(format!("Failed to load map image: {}", e).into());
-            }
-        }
-        match app::cleardarksky::load_cleardarksky_image(&main_window).await {
-            Ok(cleardarksky_image) => {
-                main_window.set_cleardarksky_image(cleardarksky_image);
-            }
-            Err(e) => {
-                error!("Failed to load ClearDarkSky image: {}", e);
-                main_window.set_error_message(format!("Failed to load ClearDarkSky image: {}", e).into());
-            }
-        }
+    // Channel for initial data loading
+    let (initial_tx, initial_rx) = mpsc::channel();
 
-        // Load initial sounding data synchronously to ensure it completes
-        info!("Loading initial sounding data...");
-        if let Err(e) = app::sounding::load_sounding_image(&main_window).await {
-            error!("Failed to load initial sounding data: {}", e);
-            // Don't set error message for startup failures to avoid blocking the UI
-        } else {
-            info!("Initial sounding data loaded successfully");
-        }
-    });
+    // Spawn initial data loading tasks asynchronously
+    {
+        let initial_tx_clone = initial_tx.clone();
+        let lat_clone = lat;
+        let lon_clone = lon;
+        thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                if let Ok(data) = app::weather::fetch_weather_images(lat_clone, lon_clone).await {
+                    let _ = initial_tx_clone.send(InitialDataMessage::Weather(data));
+                }
+            });
+        });
+    }
 
-    main_window.set_loading(false);
+    {
+        let initial_tx_clone = initial_tx.clone();
+        let lat_clone = lat;
+        let lon_clone = lon;
+        thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                if let Ok(images) = app::cloud_cover::fetch_cloud_cover_images(lat_clone, lon_clone).await {
+                    let _ = initial_tx_clone.send(InitialDataMessage::CloudCover(images));
+                }
+            });
+        });
+    }
+
+    {
+        let initial_tx_clone = initial_tx.clone();
+        let lat_clone = lat;
+        let lon_clone = lon;
+        thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                if let Ok((images, legend)) = app::wind::fetch_wind_images(lat_clone, lon_clone).await {
+                    let _ = initial_tx_clone.send(InitialDataMessage::Wind((images, legend)));
+                }
+            });
+        });
+    }
+
+    {
+        let initial_tx_clone = initial_tx.clone();
+        let lat_clone = lat;
+        let lon_clone = lon;
+        thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                if let Ok(data) = app::clearoutside::fetch_clearoutside_data(lat_clone, lon_clone).await {
+                    let _ = initial_tx_clone.send(InitialDataMessage::ClearOutside(data.clone()));
+                    // Now fetch meteoblue data using the clearoutside forecast
+                    // We need to create a clearoutside::ClearOutsideForecast from our data
+                    // For simplicity, let's fetch the raw clearoutside forecast
+                    use clearoutside::ClearOutsideAPI;
+                    let lat_str = format!("{:.2}", lat_clone);
+                    let lon_str = format!("{:.2}", lon_clone);
+                    if let Ok(api) = ClearOutsideAPI::new(&lat_str, &lon_str, Some("midnight")).await {
+                        if let Ok(forecast) = api.pull() {
+                            if let Ok(meteoblue_data) = app::meteoblue::fetch_meteoblue_data(lat_clone, lon_clone, &forecast).await {
+                                let _ = initial_tx_clone.send(InitialDataMessage::MeteoBlue(meteoblue_data));
+                            }
+                        }
+                    }
+                }
+            });
+        });
+    }
+
+    {
+        let initial_tx_clone = initial_tx.clone();
+        let lat_clone = lat;
+        let lon_clone = lon;
+        thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                if let Ok(image) = app::map::fetch_map_image(lat_clone, lon_clone).await {
+                    let _ = initial_tx_clone.send(InitialDataMessage::Map(image));
+                }
+            });
+        });
+    }
+
+    {
+        let initial_tx_clone = initial_tx.clone();
+        let lat_clone = lat;
+        let lon_clone = lon;
+        thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                if let Ok(image) = app::cleardarksky::fetch_cleardarksky_image(lat_clone, lon_clone).await {
+                    let _ = initial_tx_clone.send(InitialDataMessage::ClearDarkSky(image));
+                }
+            });
+        });
+    }
+
+    {
+        let initial_tx_clone = initial_tx.clone();
+        let lat_clone = lat;
+        let lon_clone = lon;
+        thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                if let Ok(image) = app::sounding::fetch_sounding_image(lat_clone, lon_clone).await {
+                    let _ = initial_tx_clone.send(InitialDataMessage::Sounding(image));
+                }
+            });
+        });
+    }
 
     // Load initial Environment Canada images
     {
@@ -182,12 +269,16 @@ fn main() -> Result<(), slint::PlatformError> {
 
     // Handle cloud cover updates directly in the main thread using invoke_from_event_loop
     let main_window_weak = main_window.as_weak();
+    let lat3 = lat;
+    let lon3 = lon;
     let _cloud_update_handle = thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
         info!("Cloud cover update thread started");
         while let Ok(signal) = cloud_rx.recv() {
             info!("Received cloud signal: {}", signal);
             let window_weak = main_window_weak.clone();
+            let lat = lat3;
+            let lon = lon3;
             match signal {
                 "update" => {
                     info!("Processing cloud update signal");
@@ -197,20 +288,19 @@ fn main() -> Result<(), slint::PlatformError> {
                         let window = window_weak.upgrade();
                         if let Some(window) = window {
                             rt.block_on(async {
-                                if let Err(e) = app::cloud_cover::update_cloud_cover_images(&window).await {
-                                    error!("Failed to update cloud cover images: {}", e);
-                                    window.set_error_message(format!("Failed to update cloud cover images: {}", e).into());
+                                if let Ok(images) = app::cloud_cover::fetch_cloud_cover_images(lat, lon).await {
+                                    app::cloud_cover::set_cloud_cover_images(&window, images);
+                                } else {
+                                    error!("Failed to update cloud cover images");
+                                    window.set_error_message("Failed to update cloud cover images".into());
                                 }
                                 // Also update ClearDarkSky chart
-                                match app::cleardarksky::load_cleardarksky_image(&window).await {
-                                    Ok(cleardarksky_image) => {
-                                        window.set_cleardarksky_image(cleardarksky_image);
-                                        info!("Updated ClearDarkSky chart");
-                                    }
-                                    Err(e) => {
-                                        error!("Failed to update ClearDarkSky image: {}", e);
-                                        window.set_error_message(format!("Failed to update ClearDarkSky image: {}", e).into());
-                                    }
+                                if let Ok(image) = app::cleardarksky::fetch_cleardarksky_image(lat, lon).await {
+                                    app::cleardarksky::set_cleardarksky_image(&window, image);
+                                    info!("Updated ClearDarkSky chart");
+                                } else {
+                                    error!("Failed to update ClearDarkSky image");
+                                    window.set_error_message("Failed to update ClearDarkSky image".into());
                                 }
                             });
                         }
@@ -224,9 +314,25 @@ fn main() -> Result<(), slint::PlatformError> {
                         let window = window_weak.upgrade();
                         if let Some(window) = window {
                             rt.block_on(async {
-                                if let Err(e) = app::clearoutside::update_clearoutside_data(&window).await {
-                                    error!("Failed to update ClearOutside data: {}", e);
-                                    window.set_error_message(format!("Failed to update ClearOutside data: {}", e).into());
+                                if let Ok(data) = app::clearoutside::fetch_clearoutside_data(lat, lon).await {
+                                    app::clearoutside::set_clearoutside_data(&window, data.clone());
+                                    // Also update MeteoBlue data using the clearoutside forecast
+                                    use clearoutside::ClearOutsideAPI;
+                                    let lat_str = format!("{:.2}", lat);
+                                    let lon_str = format!("{:.2}", lon);
+                                    if let Ok(api) = ClearOutsideAPI::new(&lat_str, &lon_str, Some("midnight")).await {
+                                        if let Ok(forecast) = api.pull() {
+                                            if let Ok(meteoblue_data) = app::meteoblue::fetch_meteoblue_data(lat, lon, &forecast).await {
+                                                app::meteoblue::set_meteoblue_data(&window, meteoblue_data);
+                                                info!("Updated MeteoBlue data");
+                                            } else {
+                                                error!("Failed to update MeteoBlue data");
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    error!("Failed to update ClearOutside data");
+                                    window.set_error_message("Failed to update ClearOutside data".into());
                                 }
                             });
                         }
@@ -283,12 +389,16 @@ fn main() -> Result<(), slint::PlatformError> {
 
     // Handle wind updates directly in the main thread using invoke_from_event_loop
     let main_window_weak2 = main_window.as_weak();
+    let lat4 = lat;
+    let lon4 = lon;
     let _wind_update_handle = thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
         info!("Wind update thread started");
         while let Ok(signal) = wind_rx.recv() {
             info!("Received wind signal: {}", signal);
             let window_weak = main_window_weak2.clone();
+            let lat = lat4;
+            let lon = lon4;
             match signal {
                 "update" => {
                     info!("Processing wind update signal");
@@ -298,9 +408,11 @@ fn main() -> Result<(), slint::PlatformError> {
                         let window = window_weak.upgrade();
                         if let Some(window) = window {
                             rt.block_on(async {
-                                if let Err(e) = app::wind::update_wind_images(&window).await {
-                                    error!("Failed to update wind images: {}", e);
-                                    window.set_error_message(format!("Failed to update wind images: {}", e).into());
+                                if let Ok((images, legend)) = app::wind::fetch_wind_images(lat, lon).await {
+                                    app::wind::set_wind_images(&window, (images, legend));
+                                } else {
+                                    error!("Failed to update wind images");
+                                    window.set_error_message("Failed to update wind images".into());
                                 }
                             });
                         }
@@ -324,23 +436,78 @@ fn main() -> Result<(), slint::PlatformError> {
         info!("Wind update thread ended");
     });
 
+    // Handle initial data loading in the UI thread
+    let main_window_weak_initial = main_window.as_weak();
+    let _initial_data_handle = thread::spawn(move || {
+        info!("Initial data loading thread started");
+        while let Ok(message) = initial_rx.recv() {
+            let window_weak = main_window_weak_initial.clone();
+            slint::invoke_from_event_loop(move || {
+                let window = window_weak.upgrade();
+                if let Some(window) = window {
+                    match message {
+                        InitialDataMessage::Weather(data) => {
+                            app::weather::set_weather_images(&window, data);
+                            info!("Initial weather data loaded");
+                        }
+                        InitialDataMessage::CloudCover(images) => {
+                            app::cloud_cover::set_cloud_cover_images(&window, images);
+                            info!("Initial cloud cover data loaded");
+                        }
+                        InitialDataMessage::Wind((images, legend)) => {
+                            app::wind::set_wind_images(&window, (images, legend));
+                            info!("Initial wind data loaded");
+                        }
+                        InitialDataMessage::ClearOutside(data) => {
+                            app::clearoutside::set_clearoutside_data(&window, data);
+                            info!("Initial ClearOutside data loaded");
+                        }
+                        InitialDataMessage::MeteoBlue(data) => {
+                            app::meteoblue::set_meteoblue_data(&window, data);
+                            info!("Initial MeteoBlue data loaded");
+                        }
+                        InitialDataMessage::Map(image) => {
+                            app::map::set_map_image(&window, image);
+                            info!("Initial map data loaded");
+                        }
+                        InitialDataMessage::ClearDarkSky(image) => {
+                            app::cleardarksky::set_cleardarksky_image(&window, image);
+                            info!("Initial ClearDarkSky data loaded");
+                        }
+                        InitialDataMessage::Sounding(image) => {
+                            app::sounding::set_sounding_image(&window, image);
+                            info!("Initial sounding data loaded");
+                        }
+                    }
+                }
+            }).unwrap();
+        }
+        info!("Initial data loading thread ended");
+    });
+
     // Keep the main window alive by storing it
     let _main_window_handle = main_window.as_weak();
 
     // Handle weather updates in the UI thread
     let main_window_weak2 = main_window.as_weak();
+    let lat2 = lat;
+    let lon2 = lon;
     let _weather_update_handle = thread::spawn(move || {
         while let Ok(()) = rx.recv() {
             let window_weak = main_window_weak2.clone();
+            let lat = lat2;
+            let lon = lon2;
             // Use invoke_from_event_loop to run async code in the UI thread
             slint::invoke_from_event_loop(move || {
                 let rt = tokio::runtime::Runtime::new().unwrap();
                 let window = window_weak.upgrade();
                 if let Some(window) = window {
                     rt.block_on(async {
-                        if let Err(e) = app::weather::update_weather_images(&window).await {
-                            error!("Failed to update images: {}", e);
-                            window.set_error_message(format!("Failed to update images: {}", e).into());
+                        if let Ok(data) = app::weather::fetch_weather_images(lat, lon).await {
+                            app::weather::set_weather_images(&window, data);
+                        } else {
+                            error!("Failed to update weather images");
+                            window.set_error_message("Failed to update weather images".into());
                         }
                     });
                 }

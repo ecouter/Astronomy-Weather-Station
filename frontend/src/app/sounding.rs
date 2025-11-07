@@ -27,8 +27,29 @@ pub fn setup_sounding_callbacks(main_window: &MainWindow) {
                 let window = window_weak.upgrade();
                 if let Some(window) = window {
                     info!("Sounding page opened, loading sounding image...");
-                    if let Err(e) = load_sounding_image(&window).await {
-                        error!("Failed to load sounding image: {}", e);
+                    // Get coordinates
+                    let (lat, lon) = match coordinates::load_coordinates(&window) {
+                        Ok(coords) => coords,
+                        Err(e) => {
+                            error!("Failed to load coordinates: {}", e);
+                            window.set_error_message(format!("Failed to load coordinates: {}", e).into());
+                            return;
+                        }
+                    };
+                    match fetch_sounding_image(lat, lon).await {
+                        Ok(image) => {
+                            set_sounding_image(&window, image);
+                        }
+                        Err(e) => {
+                            error!("Failed to load sounding image: {}", e);
+                            window.set_error_message(format!("Failed to load sounding image: {}", e).into());
+                            // Clear loading state
+                            {
+                                let mut loading = SOUNDING_LOADING.lock().unwrap();
+                                *loading = false;
+                            }
+                            window.set_loading(false);
+                        }
                     }
                 }
             });
@@ -36,30 +57,8 @@ pub fn setup_sounding_callbacks(main_window: &MainWindow) {
     });
 }
 
-pub async fn load_sounding_image(main_window: &MainWindow) -> Result<(), Box<dyn std::error::Error>> {
-    info!("Loading sounding image...");
-
-    // Set loading state
-    {
-        let mut loading = SOUNDING_LOADING.lock().unwrap();
-        *loading = true;
-    }
-    main_window.set_loading(true);
-
-    // Get coordinates
-    let (lat, lon) = match coordinates::load_coordinates(main_window) {
-        Ok(coords) => coords,
-        Err(e) => {
-            error!("Failed to load coordinates: {}", e);
-            main_window.set_error_message(format!("Failed to load coordinates: {}", e).into());
-            main_window.set_loading(false);
-            {
-                let mut loading = SOUNDING_LOADING.lock().unwrap();
-                *loading = false;
-            }
-            return Err(e);
-        }
-    };
+pub async fn fetch_sounding_image(lat: f64, lon: f64) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    info!("Fetching sounding image...");
 
     // Call SHARPpy API asynchronously with explicit output file path
     let output_path = std::env::current_dir()
@@ -79,44 +78,21 @@ pub async fn load_sounding_image(main_window: &MainWindow) -> Result<(), Box<dyn
     let png_path = result.trim();
 
     // Read the PNG file
-    let png_data = match std::fs::read(png_path) {
-        Ok(data) => data,
-        Err(e) => {
-            error!("Failed to read PNG file {}: {}", png_path, e);
-            main_window.set_error_message(format!("Failed to read sounding image: {}", e).into());
-            main_window.set_loading(false);
-            {
-                let mut loading = SOUNDING_LOADING.lock().unwrap();
-                *loading = false;
-            }
-            return Err(e.into());
-        }
-    };
+    let png_data = std::fs::read(png_path)?;
 
-    // Convert to Slint image
-    match decode_png_to_slint_image(&png_data) {
-        Ok(slint_image) => {
-            main_window.set_sounding_image(slint_image);
-            info!("Successfully loaded sounding image");
-        }
-        Err(e) => {
-            error!("Failed to decode PNG: {}", e);
-            main_window.set_error_message(format!("Failed to decode sounding image: {}", e).into());
-            main_window.set_loading(false);
-            {
-                let mut loading = SOUNDING_LOADING.lock().unwrap();
-                *loading = false;
-            }
-            return Err(e.into());
-        }
-    }
+    info!("Successfully fetched sounding image");
+    Ok(png_data)
+}
 
-    // Clear loading state
-    main_window.set_loading(false);
+pub fn set_sounding_image(main_window: &MainWindow, image_data: Vec<u8>) {
+    // Set loading state
     {
         let mut loading = SOUNDING_LOADING.lock().unwrap();
         *loading = false;
     }
-
-    Ok(())
+    main_window.set_loading(false);
+    match decode_png_to_slint_image(&image_data) {
+        Ok(image) => main_window.set_sounding_image(image),
+        Err(e) => error!("Failed to decode sounding image: {}", e),
+    }
 }

@@ -1,17 +1,20 @@
 use slint::Image;
-use crate::app::coordinates::load_coordinates;
 use crate::app::utils::{decode_png_to_slint_image, blend_images};
 
-pub async fn update_weather_images(main_window: &crate::MainWindow) -> Result<(), Box<dyn std::error::Error>> {
+#[derive(Clone)]
+pub struct WeatherData {
+    pub top_left: Vec<u8>,
+    pub top_right: Vec<u8>,
+    pub bottom_left: Vec<u8>,
+    pub bottom_right: Vec<u8>,
+    pub legend: Vec<u8>,
+}
+
+pub async fn fetch_weather_images(lat: f64, lon: f64) -> Result<WeatherData, Box<dyn std::error::Error>> {
     use geomet::{GeoMetAPI, BoundingBox};
     use chrono::{Utc, Duration, Timelike};
-    use std::sync::Mutex;
-    use once_cell::sync::Lazy;
 
-    println!("Updating weather images...");
-
-    // Load coordinates
-    let (lat, lon) = load_coordinates(main_window)?;
+    println!("Fetching weather images...");
 
     // Calculate current UTC time for different data types
     let now = Utc::now();
@@ -45,26 +48,32 @@ pub async fn update_weather_images(main_window: &crate::MainWindow) -> Result<()
         api.get_legend_graphic("HRDPS.CONTINENTAL_PN-SLP", Some("PRESSURE4"), "image/png", Some("en"))
     )?;
 
-    // Decode PNG images and convert to Slint format
-    let top_left_image = decode_png_to_slint_image(&top_left_data)?;
-    let top_right_image = decode_png_to_slint_image(&top_right_data)?;
-    let bottom_left_image = decode_png_to_slint_image(&bottom_left_data)?;
-    let bottom_right_image = decode_png_to_slint_image(&bottom_right_data)?;
-    let legend_image = decode_png_to_slint_image(&legend_data)?;
+    println!("Weather images fetched successfully");
 
-    // Blend bottom right image: 80% bottom right + 20% bottom left
-    //let blended_bottom_right = blend_images(&bottom_right_data, &bottom_left_data, 0.8, 0.2)?;
+    Ok(WeatherData {
+        top_left: top_left_data,
+        top_right: top_right_data,
+        bottom_left: bottom_left_data,
+        bottom_right: bottom_right_data,
+        legend: legend_data,
+    })
+}
 
-    // Update UI
-    main_window.set_top_left_image(top_left_image);
-    main_window.set_top_right_image(top_right_image);
-    main_window.set_bottom_left_image(bottom_left_image);
-    main_window.set_bottom_right_image(bottom_right_image);
-    main_window.set_legend_image(legend_image);
-
-    // Clear any previous error
+pub fn set_weather_images(main_window: &crate::MainWindow, data: WeatherData) {
+    if let Ok(top_left) = decode_png_to_slint_image(&data.top_left) {
+        main_window.set_top_left_image(top_left);
+    }
+    if let Ok(top_right) = decode_png_to_slint_image(&data.top_right) {
+        main_window.set_top_right_image(top_right);
+    }
+    if let Ok(bottom_left) = decode_png_to_slint_image(&data.bottom_left) {
+        main_window.set_bottom_left_image(bottom_left);
+    }
+    if let Ok(bottom_right) = decode_png_to_slint_image(&data.bottom_right) {
+        main_window.set_bottom_right_image(bottom_right);
+    }
+    if let Ok(legend) = decode_png_to_slint_image(&data.legend) {
+        main_window.set_legend_image(legend);
+    }
     main_window.set_error_message("".into());
-
-    println!("Weather images updated successfully");
-    Ok(())
 }

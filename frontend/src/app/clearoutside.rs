@@ -1,7 +1,6 @@
 use std::rc::Rc;
 use slint::{VecModel};
 use crate::MainWindow;
-use crate::app::coordinates::load_coordinates;
 use crate::app::utils::parse_hour;
 
 #[derive(Clone)]
@@ -13,11 +12,33 @@ pub struct NightCondition {
     is_evening: bool, // true for evening hours (after sunset), false for morning hours (before sunrise)
 }
 
-pub async fn update_clearoutside_data(main_window: &MainWindow) -> Result<(), Box<dyn std::error::Error>> {
-    use clearoutside::ClearOutsideAPI;
+#[derive(Clone)]
+pub struct ClearOutsideData {
+    pub day0_conditions: Vec<String>,
+    pub day0_clouds: Vec<i32>,
+    pub day0_hours: Vec<i32>,
+    pub day1_conditions: Vec<String>,
+    pub day1_clouds: Vec<i32>,
+    pub day1_hours: Vec<i32>,
+    pub day2_conditions: Vec<String>,
+    pub day2_clouds: Vec<i32>,
+    pub day2_hours: Vec<i32>,
+    pub day3_conditions: Vec<String>,
+    pub day3_clouds: Vec<i32>,
+    pub day3_hours: Vec<i32>,
+    pub day4_conditions: Vec<String>,
+    pub day4_clouds: Vec<i32>,
+    pub day4_hours: Vec<i32>,
+    pub day5_conditions: Vec<String>,
+    pub day5_clouds: Vec<i32>,
+    pub day5_hours: Vec<i32>,
+    pub day6_conditions: Vec<String>,
+    pub day6_clouds: Vec<i32>,
+    pub day6_hours: Vec<i32>,
+}
 
-    // Load coordinates
-    let (lat, lon) = load_coordinates(main_window)?;
+pub async fn fetch_clearoutside_data(lat: f64, lon: f64) -> Result<ClearOutsideData, Box<dyn std::error::Error>> {
+    use clearoutside::ClearOutsideAPI;
 
     // Format coordinates for ClearOutside (lat.lon with 2 decimals)
     let lat_str = format!("{:.2}", lat);
@@ -30,19 +51,12 @@ pub async fn update_clearoutside_data(main_window: &MainWindow) -> Result<(), Bo
     let forecast = api.pull()?;
 
     // Process data for night hours display
-    let night_conditions = process_clearoutside_data(&forecast)?;
-    update_clearoutside_display(main_window, night_conditions);
+    let data = process_clearoutside_data(&forecast)?;
 
-    // Also update meteoblue data using the same coordinates
-    if let Err(e) = crate::app::meteoblue::update_meteoblue_data(main_window, &forecast).await {
-        eprintln!("Failed to update meteoblue data: {}", e);
-        main_window.set_error_message(format!("Failed to update meteoblue data: {}", e).into());
-    }
-
-    Ok(())
+    Ok(data)
 }
 
-fn process_clearoutside_data(forecast: &clearoutside::ClearOutsideForecast) -> Result<Vec<NightCondition>, Box<dyn std::error::Error>> {
+fn process_clearoutside_data(forecast: &clearoutside::ClearOutsideForecast) -> Result<ClearOutsideData, Box<dyn std::error::Error>> {
     let mut night_conditions = Vec::new();
 
     // Sort days by key (day-0, day-1, etc.)
@@ -118,16 +132,11 @@ fn process_clearoutside_data(forecast: &clearoutside::ClearOutsideForecast) -> R
         }
     });
 
-    Ok(night_conditions)
-}
-
-fn update_clearoutside_display(main_window: &MainWindow, conditions: Vec<NightCondition>) {
-
-    // Group conditions by day
+    // Group conditions by day and prepare data
     use std::collections::HashMap;
     let mut conditions_by_day: HashMap<String, Vec<&NightCondition>> = HashMap::new();
 
-    for condition in &conditions {
+    for condition in &night_conditions {
         conditions_by_day.entry(condition.day.clone()).or_insert(Vec::new()).push(condition);
     }
 
@@ -135,12 +144,36 @@ fn update_clearoutside_display(main_window: &MainWindow, conditions: Vec<NightCo
     let mut sorted_days: Vec<_> = conditions_by_day.keys().collect();
     sorted_days.sort();
 
+    let mut data = ClearOutsideData {
+        day0_conditions: Vec::new(),
+        day0_clouds: Vec::new(),
+        day0_hours: Vec::new(),
+        day1_conditions: Vec::new(),
+        day1_clouds: Vec::new(),
+        day1_hours: Vec::new(),
+        day2_conditions: Vec::new(),
+        day2_clouds: Vec::new(),
+        day2_hours: Vec::new(),
+        day3_conditions: Vec::new(),
+        day3_clouds: Vec::new(),
+        day3_hours: Vec::new(),
+        day4_conditions: Vec::new(),
+        day4_clouds: Vec::new(),
+        day4_hours: Vec::new(),
+        day5_conditions: Vec::new(),
+        day5_clouds: Vec::new(),
+        day5_hours: Vec::new(),
+        day6_conditions: Vec::new(),
+        day6_clouds: Vec::new(),
+        day6_hours: Vec::new(),
+    };
+
     // Set data for each day
     for (day_idx, day_key) in sorted_days.iter().enumerate() {
         if let Some(day_conditions) = conditions_by_day.get(*day_key) {
             // Conditions are already sorted by the global sorting logic
-            let conditions_vec: Vec<slint::SharedString> = day_conditions.iter()
-                .map(|c| c.condition.clone().into())
+            let conditions_vec: Vec<String> = day_conditions.iter()
+                .map(|c| c.condition.clone())
                 .collect();
             let clouds_vec: Vec<i32> = day_conditions.iter()
                 .map(|c| c.total_clouds as i32)
@@ -151,42 +184,74 @@ fn update_clearoutside_display(main_window: &MainWindow, conditions: Vec<NightCo
 
             match day_idx {
                 0 => {
-                    main_window.set_day0_conditions(Rc::new(VecModel::from(conditions_vec)).into());
-                    main_window.set_day0_clouds(Rc::new(VecModel::from(clouds_vec)).into());
-                    main_window.set_day0_hours(Rc::new(VecModel::from(hours_vec)).into());
+                    data.day0_conditions = conditions_vec;
+                    data.day0_clouds = clouds_vec;
+                    data.day0_hours = hours_vec;
                 }
                 1 => {
-                    main_window.set_day1_conditions(Rc::new(VecModel::from(conditions_vec)).into());
-                    main_window.set_day1_clouds(Rc::new(VecModel::from(clouds_vec)).into());
-                    main_window.set_day1_hours(Rc::new(VecModel::from(hours_vec)).into());
+                    data.day1_conditions = conditions_vec;
+                    data.day1_clouds = clouds_vec;
+                    data.day1_hours = hours_vec;
                 }
                 2 => {
-                    main_window.set_day2_conditions(Rc::new(VecModel::from(conditions_vec)).into());
-                    main_window.set_day2_clouds(Rc::new(VecModel::from(clouds_vec)).into());
-                    main_window.set_day2_hours(Rc::new(VecModel::from(hours_vec)).into());
+                    data.day2_conditions = conditions_vec;
+                    data.day2_clouds = clouds_vec;
+                    data.day2_hours = hours_vec;
                 }
                 3 => {
-                    main_window.set_day3_conditions(Rc::new(VecModel::from(conditions_vec)).into());
-                    main_window.set_day3_clouds(Rc::new(VecModel::from(clouds_vec)).into());
-                    main_window.set_day3_hours(Rc::new(VecModel::from(hours_vec)).into());
+                    data.day3_conditions = conditions_vec;
+                    data.day3_clouds = clouds_vec;
+                    data.day3_hours = hours_vec;
                 }
                 4 => {
-                    main_window.set_day4_conditions(Rc::new(VecModel::from(conditions_vec)).into());
-                    main_window.set_day4_clouds(Rc::new(VecModel::from(clouds_vec)).into());
-                    main_window.set_day4_hours(Rc::new(VecModel::from(hours_vec)).into());
+                    data.day4_conditions = conditions_vec;
+                    data.day4_clouds = clouds_vec;
+                    data.day4_hours = hours_vec;
                 }
                 5 => {
-                    main_window.set_day5_conditions(Rc::new(VecModel::from(conditions_vec)).into());
-                    main_window.set_day5_clouds(Rc::new(VecModel::from(clouds_vec)).into());
-                    main_window.set_day5_hours(Rc::new(VecModel::from(hours_vec)).into());
+                    data.day5_conditions = conditions_vec;
+                    data.day5_clouds = clouds_vec;
+                    data.day5_hours = hours_vec;
                 }
                 6 => {
-                    main_window.set_day6_conditions(Rc::new(VecModel::from(conditions_vec)).into());
-                    main_window.set_day6_clouds(Rc::new(VecModel::from(clouds_vec)).into());
-                    main_window.set_day6_hours(Rc::new(VecModel::from(hours_vec)).into());
+                    data.day6_conditions = conditions_vec;
+                    data.day6_clouds = clouds_vec;
+                    data.day6_hours = hours_vec;
                 }
                 _ => {}
             }
         }
     }
+
+    Ok(data)
+}
+
+pub fn set_clearoutside_data(main_window: &MainWindow, data: ClearOutsideData) {
+    main_window.set_day0_conditions(Rc::new(VecModel::from(data.day0_conditions.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>())).into());
+    main_window.set_day0_clouds(Rc::new(VecModel::from(data.day0_clouds)).into());
+    main_window.set_day0_hours(Rc::new(VecModel::from(data.day0_hours)).into());
+
+    main_window.set_day1_conditions(Rc::new(VecModel::from(data.day1_conditions.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>())).into());
+    main_window.set_day1_clouds(Rc::new(VecModel::from(data.day1_clouds)).into());
+    main_window.set_day1_hours(Rc::new(VecModel::from(data.day1_hours)).into());
+
+    main_window.set_day2_conditions(Rc::new(VecModel::from(data.day2_conditions.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>())).into());
+    main_window.set_day2_clouds(Rc::new(VecModel::from(data.day2_clouds)).into());
+    main_window.set_day2_hours(Rc::new(VecModel::from(data.day2_hours)).into());
+
+    main_window.set_day3_conditions(Rc::new(VecModel::from(data.day3_conditions.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>())).into());
+    main_window.set_day3_clouds(Rc::new(VecModel::from(data.day3_clouds)).into());
+    main_window.set_day3_hours(Rc::new(VecModel::from(data.day3_hours)).into());
+
+    main_window.set_day4_conditions(Rc::new(VecModel::from(data.day4_conditions.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>())).into());
+    main_window.set_day4_clouds(Rc::new(VecModel::from(data.day4_clouds)).into());
+    main_window.set_day4_hours(Rc::new(VecModel::from(data.day4_hours)).into());
+
+    main_window.set_day5_conditions(Rc::new(VecModel::from(data.day5_conditions.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>())).into());
+    main_window.set_day5_clouds(Rc::new(VecModel::from(data.day5_clouds)).into());
+    main_window.set_day5_hours(Rc::new(VecModel::from(data.day5_hours)).into());
+
+    main_window.set_day6_conditions(Rc::new(VecModel::from(data.day6_conditions.into_iter().map(|s| s.into()).collect::<Vec<slint::SharedString>>())).into());
+    main_window.set_day6_clouds(Rc::new(VecModel::from(data.day6_clouds)).into());
+    main_window.set_day6_hours(Rc::new(VecModel::from(data.day6_hours)).into());
 }

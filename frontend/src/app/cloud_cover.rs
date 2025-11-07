@@ -102,14 +102,11 @@ pub fn setup_cloud_cover_callbacks(main_window: &MainWindow) {
     });
 }
 
-pub async fn update_cloud_cover_images(main_window: &MainWindow) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn fetch_cloud_cover_images(lat: f64, lon: f64) -> Result<Vec<Vec<u8>>, Box<dyn std::error::Error>> {
     use geomet::{GeoMetAPI, BoundingBox};
     use chrono::{Utc, Duration};
 
-    println!("Updating cloud cover images...");
-
-    // Load coordinates
-    let (lat, lon) = crate::app::coordinates::load_coordinates(main_window)?;
+    println!("Fetching cloud cover images...");
 
     // Calculate current UTC time, round to next hour for forecast
     let now = Utc::now();
@@ -157,10 +154,15 @@ pub async fn update_cloud_cover_images(main_window: &MainWindow) -> Result<(), B
     // Remove empty entries and keep only successful fetches
     let cloud_images: Vec<Vec<u8>> = cloud_images.into_iter().filter(|img| !img.is_empty()).collect();
 
+    println!("Cloud cover images fetched successfully ({} images)", cloud_images.len());
+    Ok(cloud_images)
+}
+
+pub fn set_cloud_cover_images(main_window: &MainWindow, images: Vec<Vec<u8>>) {
     // Update global storage
     {
-        let mut images = CLOUD_COVER_IMAGES.lock().unwrap();
-        *images = cloud_images;
+        let mut stored_images = CLOUD_COVER_IMAGES.lock().unwrap();
+        *stored_images = images;
     }
 
     // Reset index to 0
@@ -171,9 +173,6 @@ pub async fn update_cloud_cover_images(main_window: &MainWindow) -> Result<(), B
 
     // Update UI with first image
     update_cloud_cover_display(main_window);
-
-    println!("Cloud cover images updated successfully ({} images)", CLOUD_COVER_IMAGES.lock().unwrap().len());
-    Ok(())
 }
 
 pub fn update_cloud_cover_display(main_window: &MainWindow) {

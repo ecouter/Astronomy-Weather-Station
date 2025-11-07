@@ -1,13 +1,10 @@
 use crate::MainWindow;
 use crate::app::coordinates::load_coordinates;
 
-pub async fn load_map_image(main_window: &MainWindow) -> Result<slint::Image, Box<dyn std::error::Error>> {
+pub async fn fetch_map_image(lat: f64, lon: f64) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     use openstreetmap::OpenStreetMapAPI;
 
-    println!("Loading map image...");
-
-    // Load coordinates
-    let (lat, lon) = load_coordinates(main_window)?;
+    println!("Fetching map image...");
 
     // Create filename based on coordinates
     let filename = format!("{}_{}.png", lat, lon);
@@ -16,13 +13,7 @@ pub async fn load_map_image(main_window: &MainWindow) -> Result<slint::Image, Bo
     // Check if map already exists
     if filepath.exists() {
         println!("Map file {} already exists, loading from disk", filename);
-        let img = image::open(&filepath)?;
-        let rgba_img = img.to_rgba8();
-        let width = rgba_img.width() as u32;
-        let height = rgba_img.height() as u32;
-        let raw_pixels: Vec<u8> = rgba_img.into_raw();
-        let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(&raw_pixels, width, height);
-        return Ok(slint::Image::from_rgba8(pixel_buffer));
+        return Ok(std::fs::read(&filepath)?);
     }
 
     println!("Map file {} does not exist, fetching from OpenStreetMap API", filename);
@@ -38,12 +29,13 @@ pub async fn load_map_image(main_window: &MainWindow) -> Result<slint::Image, Bo
 
     println!("Map saved to {:?}", filepath);
 
-    // Load the saved image
-    let img = image::open(&filepath)?;
-    let rgba_img = img.to_rgba8();
-    let width = rgba_img.width() as u32;
-    let height = rgba_img.height() as u32;
-    let raw_pixels: Vec<u8> = rgba_img.into_raw();
-    let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(&raw_pixels, width, height);
-    Ok(slint::Image::from_rgba8(pixel_buffer))
+    // Read the saved PNG file
+    Ok(std::fs::read(&filepath)?)
+}
+
+pub fn set_map_image(main_window: &MainWindow, image_data: Vec<u8>) {
+    match crate::app::utils::decode_png_to_slint_image(&image_data) {
+        Ok(image) => main_window.set_map_image(image),
+        Err(e) => error!("Failed to decode map image: {}", e),
+    }
 }

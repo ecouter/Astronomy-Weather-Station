@@ -2,13 +2,10 @@ use crate::MainWindow;
 use crate::app::coordinates::load_coordinates;
 use crate::app::utils::decode_gif_to_slint_image;
 
-pub async fn load_cleardarksky_image(main_window: &MainWindow) -> Result<slint::Image, Box<dyn std::error::Error>> {
+pub async fn fetch_cleardarksky_image(lat: f64, lon: f64) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     use cleardarksky::ClearDarkSkyAPI;
 
-    println!("Loading ClearDarkSky image...");
-
-    // Load coordinates - this will show popup if file not found
-    let (lat, lon) = load_coordinates(main_window)?;
+    println!("Fetching ClearDarkSky image...");
 
     // Create API client
     let api = ClearDarkSkyAPI::new();
@@ -21,6 +18,12 @@ pub async fn load_cleardarksky_image(main_window: &MainWindow) -> Result<slint::
     let gif_data = api.fetch_clear_sky_chart_bytes(&location).await?;
     println!("Fetched ClearDarkSky GIF data ({} bytes)", gif_data.len());
 
-    // Decode the GIF to Slint image
-    decode_gif_to_slint_image(&gif_data)
+    Ok(gif_data)
+}
+
+pub fn set_cleardarksky_image(main_window: &MainWindow, image_data: Vec<u8>) {
+    match decode_gif_to_slint_image(&image_data) {
+        Ok(image) => main_window.set_cleardarksky_image(image),
+        Err(e) => error!("Failed to decode ClearDarkSky image: {}", e),
+    }
 }
