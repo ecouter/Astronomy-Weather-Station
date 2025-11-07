@@ -20,6 +20,7 @@ fn main() -> Result<(), slint::PlatformError> {
     app::cloud_cover::setup_cloud_cover_callbacks(&main_window);
     app::wind::setup_wind_callbacks(&main_window);
     app::environment_canada::setup_environment_canada_callbacks(&main_window);
+    app::sounding::setup_sounding_callbacks(&main_window);
 
     // Start the async runtime for image fetching
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -59,6 +60,15 @@ fn main() -> Result<(), slint::PlatformError> {
                 error!("Failed to load ClearDarkSky image: {}", e);
                 main_window.set_error_message(format!("Failed to load ClearDarkSky image: {}", e).into());
             }
+        }
+
+        // Load initial sounding data synchronously to ensure it completes
+        info!("Loading initial sounding data...");
+        if let Err(e) = app::sounding::load_sounding_image(&main_window).await {
+            error!("Failed to load initial sounding data: {}", e);
+            // Don't set error message for startup failures to avoid blocking the UI
+        } else {
+            info!("Initial sounding data loaded successfully");
         }
     });
 

@@ -9,3 +9,4 @@ pub mod meteoblue;
 pub mod cleardarksky;
 pub mod weather;
 pub mod map;
+pub mod sounding;

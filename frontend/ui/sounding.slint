@@ -1,0 +1,59 @@
+import { VerticalBox, Button } from "std-widgets.slint";
+
+export component SoundingPage inherits Rectangle {
+    background: #1c1c1c;
+    height: 720px;
+    width: 1280px;
+    in property <image> sounding_image;
+    in property <bool> loading;
+    in property <string> error_message;
+    callback go_back();
+
+    VerticalLayout {
+        padding-left: 25px;
+        padding-right: 35px;
+        padding-top: 20px;
+        padding-bottom: 20px;
+        spacing: 10px;
+
+        // Back button and title
+        HorizontalLayout {
+            height: 40px;
+            Button {
+                text: "Back";
+                clicked => { go_back(); }
+            }
+            Text {
+                text: "SHARPpy GFS Sounding";
+                font-size: 36px;
+                color: #ffffff;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        // Main content - full screen image
+        if (loading): Text {
+            text: "Generating sounding plot...";
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            color: #ffffff;
+            font-size: 24px;
+        }
+
+        if (!loading && error_message == ""): Image {
+            source: sounding_image;
+            width: 100%;
+            height: 100%;
+            image-fit: contain;
+        }
+
+        if (!loading && error_message != ""): Text {
+            text: error_message;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            color: #ff0000;
+            font-size: 24px;
+        }
+    }
+}
