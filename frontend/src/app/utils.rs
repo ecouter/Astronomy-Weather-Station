@@ -7,11 +7,11 @@ use once_cell::sync::Lazy;
 use chrono::{Timelike, Datelike};
 use slint::Image;
 
-pub fn decode_png_to_slint_image(png_data: &[u8]) -> Result<slint::Image, Box<dyn std::error::Error>> {
+pub fn decode_png_to_slint_image(image_data: &[u8]) -> Result<slint::Image, Box<dyn std::error::Error>> {
     use image::ImageFormat;
 
-    // Decode the PNG data
-    let img = image::load_from_memory_with_format(png_data, ImageFormat::Png)?;
+    // Auto-detect the image format and decode
+    let img = image::load_from_memory(image_data)?;
 
     // Convert to RGBA8 format
     let rgba_img = img.to_rgba8();

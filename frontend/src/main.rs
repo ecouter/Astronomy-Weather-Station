@@ -47,20 +47,29 @@ fn main() -> Result<(), slint::PlatformError> {
     // Set up NINA URL change callback handler
     let main_window_weak_nina = main_window.as_weak();
     main_window.on_nina_url_saved(move |index| {
-        let window = main_window_weak_nina.upgrade();
-        if let Some(window) = window {
-            let url_index = index as usize;
-            let url = match url_index {
-                0 => window.get_nina_url1().to_string(),
-                1 => window.get_nina_url2().to_string(),
-                2 => window.get_nina_url3().to_string(),
-                3 => window.get_nina_url4().to_string(),
-                4 => window.get_nina_url5().to_string(),
-                5 => window.get_nina_url6().to_string(),
-                _ => return,
-            };
-            app::nina::handle_nina_url_change(url_index, url, &window);
-        }
+        let window_weak = main_window_weak_nina.clone();
+        let url_index = index as usize;
+
+        // Use invoke_from_event_loop to run async code in the UI thread
+        slint::invoke_from_event_loop(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let window = window_weak.upgrade();
+            if let Some(window) = window {
+                let url = match url_index {
+                    0 => window.get_nina_url1().to_string(),
+                    1 => window.get_nina_url2().to_string(),
+                    2 => window.get_nina_url3().to_string(),
+                    3 => window.get_nina_url4().to_string(),
+                    4 => window.get_nina_url5().to_string(),
+                    5 => window.get_nina_url6().to_string(),
+                    _ => return,
+                };
+                info!("NINA URL change callback: slot {} -> '{}'", url_index + 1, url);
+                rt.block_on(async {
+                    app::nina::handle_nina_url_change(url_index, url, &window).await;
+                });
+            }
+        }).unwrap();
     });
 
     main_window.set_loading(false); // Show UI immediately, loading happens asynchronously

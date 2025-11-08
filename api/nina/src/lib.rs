@@ -153,13 +153,20 @@ pub struct ImageStatistics {
     pub is_bayered: bool,
 }
 
-/// Image save event from websocket
+/// Image save event from websocket (with statistics)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageSaveEvent {
     #[serde(rename = "Event")]
     pub event: String,
     #[serde(rename = "ImageStatistics")]
     pub image_statistics: ImageStatistics,
+}
+
+/// Simple image prepared event from websocket (no statistics)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImagePreparedEvent {
+    #[serde(rename = "Event")]
+    pub event: String,
 }
 
 /// Fetch guiding graph data from NINA
@@ -177,7 +184,8 @@ pub async fn fetch_guiding_graph(base_url: &str) -> Result<GuideStepsHistory, an
 
 /// Fetch prepared image from NINA as bytes
 pub async fn fetch_prepared_image(base_url: &str, params: &PreparedImageParams) -> Result<Vec<u8>, anyhow::Error> {
-    let mut url = format!("{}/prepared-image", base_url.trim_end_matches('/'));
+    info!("Starting image fetch from base URL: {}", base_url);
+    let mut url = format!("{}/v2/api/prepared-image", base_url.trim_end_matches('/'));
     let mut query_params = Vec::new();
 
     if let Some(resize) = params.resize {
@@ -223,73 +231,140 @@ pub async fn fetch_prepared_image(base_url: &str, params: &PreparedImageParams) 
         url.push_str(&query_string);
     }
 
+    info!("Fetching image from URL: {}", url);
     let client = reqwest::Client::new();
     let response = client.get(&url).send().await?;
+    let status = response.status();
+    info!("Image fetch response status: {}", status);
+
+    if !status.is_success() {
+        let error_text = response.text().await.unwrap_or_else(|_| "Failed to read error response".to_string());
+        error!("Image fetch failed with status {}: {}", status, error_text);
+        return Err(anyhow::anyhow!("HTTP {}: {}", status, error_text));
+    }
+
     let bytes = response.bytes().await?;
+    info!("Successfully fetched {} bytes of image data", bytes.len());
     Ok(bytes.to_vec())
 }
 
 /// Spawn a websocket listener for a NINA instance
-/// Returns a JoinHandle that can be used to stop the listener
+/// Returns a JoinHandle and a Sender to stop the listener
 pub fn spawn_nina_websocket_listener<F>(
     base_url: String,
-    on_image_save: F,
-) -> tokio::task::JoinHandle<()>
+    on_image_prepared: F,
+) -> (std::thread::JoinHandle<()>, std::sync::mpsc::Sender<()>)
 where
-    F: Fn(ImageSaveEvent) + Send + Sync + 'static,
+    F: Fn(ImagePreparedEvent) + Send + Sync + 'static,
 {
-    let on_image_save = Arc::new(on_image_save);
+    let on_image_prepared = Arc::new(on_image_prepared);
+    let (stop_tx, stop_rx) = std::sync::mpsc::channel();
 
-    tokio::spawn(async move {
-        let ws_url = format!("ws://{}/v2", base_url.trim_start_matches("http://").trim_start_matches("https://"));
+    let handle = std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+        info!("NINA websocket task spawned successfully - starting listener");
+        let host_port = base_url
+            .trim_start_matches("http://")
+            .trim_start_matches("https://")
+            .split('/')
+            .next()
+            .unwrap_or("");
+        let ws_url = format!("ws://{}/v2/socket", host_port);
 
+        info!("Starting NINA websocket listener task for base URL: {}", base_url);
         info!("Connecting to NINA websocket at: {}", ws_url);
 
+        let mut heartbeat_counter = 0u64;
+
         loop {
+            // Check if stop signal received
+            if stop_rx.try_recv().is_ok() {
+                info!("Stop signal received, stopping NINA websocket listener for {}", base_url);
+                break;
+            }
+
+            info!("Attempting to connect to NINA websocket at: {}", ws_url);
             match connect_async(&ws_url).await {
-                Ok((ws_stream, _)) => {
-                    info!("Connected to NINA websocket at: {}", ws_url);
+                Ok((ws_stream, response)) => {
+                    info!("Successfully connected to NINA websocket at: {} (status: {})", ws_url, response.status());
                     let (_write, mut read) = ws_stream.split();
 
-                    // Send subscription message if needed (based on NINA API docs)
-                    // For now, we'll just listen for all events
+                    // Just connect and listen - NINA should send events automatically
+                    info!("Connected to NINA websocket, listening for events...");
 
                     while let Some(message) = read.next().await {
+                        heartbeat_counter += 1;
+                        if heartbeat_counter % 30 == 0 {
+                            info!("NINA websocket listener active for {} - received {} messages", base_url, heartbeat_counter);
+                        }
+
                         match message {
                             Ok(Message::Text(text)) => {
+                                println!("WEBSOCKET MESSAGE: {}", text);
                                 // Parse the websocket message
-                                if let Ok(nina_response) = serde_json::from_str::<NinaResponse<ImageSaveEvent>>(&text) {
+                                if let Ok(nina_response) = serde_json::from_str::<NinaResponse<ImagePreparedEvent>>(&text) {
+                                    debug!("Successfully parsed message as NinaResponse<ImagePreparedEvent> wrapper");
                                     if nina_response.success && nina_response.r#type == "Socket" {
                                         let event = &nina_response.response;
-                                        if event.event == "IMAGE-SAVE" {
-                                            info!("Received IMAGE-SAVE event from {}: {:?}", base_url, event);
-                                            on_image_save(event.clone());
+                                        if event.event == "IMAGE-PREPARED" {
+                                            info!("Received IMAGE-PREPARED event from {}: {:?}", base_url, event);
+                                            on_image_prepared(event.clone());
+                                        } else {
+                                            debug!("Ignoring non-IMAGE-PREPARED event: {}", event.event);
                                         }
+                                    } else {
+                                        debug!("Ignoring unsuccessful or non-socket message: success={}, type={}", nina_response.success, nina_response.r#type);
                                     }
                                 } else {
-                                    // Try parsing as direct ImageSaveEvent (in case the wrapper isn't used for websockets)
-                                    if let Ok(event) = serde_json::from_str::<ImageSaveEvent>(&text) {
-                                        if event.event == "IMAGE-SAVE" {
-                                            info!("Received IMAGE-SAVE event from {}: {:?}", base_url, event);
-                                            on_image_save(event);
+                                    debug!("Failed to parse as NinaResponse<ImagePreparedEvent>, trying direct ImagePreparedEvent parsing");
+                                    // Try parsing as direct ImagePreparedEvent (in case the wrapper isn't used for websockets)
+                                    if let Ok(event) = serde_json::from_str::<ImagePreparedEvent>(&text) {
+                                        if event.event == "IMAGE-PREPARED" {
+                                            info!("Received IMAGE-PREPARED event from {} (direct parsing): {:?}", base_url, event);
+                                            on_image_prepared(event);
+                                        } else {
+                                            debug!("Ignoring non-IMAGE-PREPARED event (direct): {}", event.event);
                                         }
+                                    } else {
+                                        debug!("Failed to parse websocket message as either NinaResponse<ImagePreparedEvent> or ImagePreparedEvent");
                                     }
                                 }
                             }
-                            Ok(Message::Close(_)) => {
-                                info!("NINA websocket connection closed for: {}", ws_url);
+                            Ok(Message::Close(close_frame)) => {
+                                info!("NINA websocket connection closed for {}: {:?}", ws_url, close_frame);
                                 break;
+                            }
+                            Ok(Message::Ping(payload)) => {
+                                debug!("Received ping from {}, payload length: {}", ws_url, payload.len());
+                            }
+                            Ok(Message::Pong(payload)) => {
+                                debug!("Received pong from {}, payload length: {}", ws_url, payload.len());
+                            }
+                            Ok(Message::Binary(data)) => {
+                                debug!("Received binary message from {}, length: {}", ws_url, data.len());
+                            }
+                            Ok(Message::Frame(frame)) => {
+                                debug!("Received frame message from {}: {:?}", ws_url, frame);
                             }
                             Err(e) => {
                                 error!("Error receiving websocket message from {}: {}", ws_url, e);
                                 break;
                             }
-                            _ => {} // Ignore other message types
                         }
                     }
                 }
                 Err(e) => {
-                    error!("Failed to connect to NINA websocket at {}: {}", ws_url, e);
+                    error!("Failed to connect to NINA websocket at {}: {} (detailed error: {:?})", ws_url, e, e);
+                    // Log additional connection details
+                    if e.to_string().contains("Connection refused") {
+                        error!("Connection refused - check if NINA server is running and port {} is accessible", base_url);
+                    } else if e.to_string().contains("Connection timed out") {
+                        error!("Connection timed out - check network connectivity to {}", base_url);
+                    } else if e.to_string().contains("DNS") {
+                        error!("DNS resolution failed - check hostname/IP address: {}", base_url);
+                    }
+                    continue;
                 }
             }
 
@@ -297,5 +372,8 @@ where
             info!("Reconnecting to NINA websocket in 5 seconds...");
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
         }
-    })
+        })
+    });
+
+    (handle, stop_tx)
 }
