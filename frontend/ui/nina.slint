@@ -31,6 +31,8 @@ export component NinaPage inherits Rectangle {
     in-out property <bool> show_zoomed_image: false;
     in-out property <image> zoomed_image;
     in-out property <string> zoomed_title;
+    property <float> zoom-factor: 2.0;
+    property <length> loupe-radius: 75px;
     in-out property <bool> show_url_popup: false;
     in-out property <string> current_url: "";
     in-out property <int> current_image_index: 0;
@@ -499,8 +501,8 @@ export component NinaPage inherits Rectangle {
                 }
             }
 
-            TouchArea {
-                width: 1200px;
+            touch_area := TouchArea {
+                width: 800px;
                 height: 600px;
                 Image {
                     source: zoomed_image;
@@ -508,6 +510,33 @@ export component NinaPage inherits Rectangle {
                     height: 100%;
                     image-fit: contain;
                 }
+
+                // Loupe overlay (the zoomed part)
+                Rectangle {
+                    visible: touch_area.has-hover;
+                    width: root.loupe-radius * 2;
+                    height: root.loupe-radius * 2;
+                    x: touch_area.mouse-x - root.loupe-radius;
+                    y: touch_area.mouse-y - root.loupe-radius;
+                    border-width: 2px;
+                    border-color: #888;
+                    clip: true;
+                    // Make it circular
+                    border-radius: root.loupe-radius;
+                    z: 100;
+
+                    Image {
+                        source: root.zoomed_image;
+                        // JavaScript-style background-position calculation: ((x * zoom) - w + bw)
+                        // where w = loupe-radius * 2, bw = 2px border
+                        x: -((touch_area.mouse-x * root.zoom-factor) - (root.loupe-radius * 2) + root.loupe-radius);
+                        y: -((touch_area.mouse-y * root.zoom-factor) - (root.loupe-radius * 2) + root.loupe-radius);
+                        // Scale the image for magnification
+                        width: touch_area.width * root.zoom-factor;
+                        height: touch_area.height * root.zoom-factor;
+                    }
+                }
+
                 clicked => {
                     show_zoomed_image = false;
                 }

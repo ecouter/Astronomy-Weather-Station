@@ -28,6 +28,42 @@ pub fn decode_png_to_slint_image(image_data: &[u8]) -> Result<slint::Image, Box<
     Ok(slint::Image::from_rgba8(pixel_buffer))
 }
 
+pub fn decode_png_to_slint_image_with_black_transparency(image_data: &[u8]) -> Result<slint::Image, Box<dyn std::error::Error>> {
+    use image::ImageFormat;
+
+    // Auto-detect the image format and decode
+    let img = image::load_from_memory(image_data)?;
+
+    // Convert to RGBA8 format
+    let mut rgba_img = img.to_rgba8();
+
+    // Get dimensions
+    let width = rgba_img.width() as u32;
+    let height = rgba_img.height() as u32;
+
+    // Process pixels: make them white with transparency based on original brightness
+    // Formula: transparency = max_value - pixel_value
+    // Since pixels are grayscale (R=G=B), use any channel as the brightness value
+    for pixel in rgba_img.pixels_mut() {
+        let brightness = pixel[0]; // Use red channel as brightness (assuming R=G=B)
+
+        // Set pixel to white (255, 255, 255)
+        pixel[0] = 255; // R
+        pixel[1] = 255; // G
+        pixel[2] = 255; // B
+
+        // Set alpha based on brightness: transparency = 255 - brightness
+        pixel[3] = brightness;
+    }
+
+    // Convert to raw pixel data (RGBA format)
+    let raw_pixels: Vec<u8> = rgba_img.into_raw();
+
+    // Create Slint image from the pixel buffer (RGBA format)
+    let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(&raw_pixels, width, height);
+    Ok(slint::Image::from_rgba8(pixel_buffer))
+}
+
 pub fn decode_gif_to_slint_image(gif_data: &[u8]) -> Result<slint::Image, Box<dyn std::error::Error>> {
     use std::io::Cursor;
 

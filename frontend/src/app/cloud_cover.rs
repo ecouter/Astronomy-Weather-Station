@@ -3,7 +3,7 @@ use once_cell::sync::Lazy;
 use chrono::Timelike;
 use slint::ComponentHandle;
 use crate::MainWindow;
-use crate::app::utils::decode_png_to_slint_image;
+use crate::app::utils::{decode_png_to_slint_image, decode_png_to_slint_image_with_black_transparency};
 
 pub static CLOUD_COVER_IMAGES: Lazy<Mutex<Vec<Vec<u8>>>> = Lazy::new(|| Mutex::new(Vec::new()));
 pub static CLOUD_COVER_INDEX: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::new(0));
@@ -33,7 +33,7 @@ pub fn setup_cloud_cover_callbacks(main_window: &MainWindow) {
                             // Decode image directly in the UI thread - should be fast for small images
                             let current_image_data = &images[*index];
                             let counter_text = format!("+{}h", *index + 1);
-                            match decode_png_to_slint_image(current_image_data) {
+                            match decode_png_to_slint_image_with_black_transparency(current_image_data) {
                                 Ok(slint_image) => {
                                     window.set_cloud_cover_image(slint_image);
                                     window.set_cloud_cover_counter(counter_text.into());
@@ -77,7 +77,7 @@ pub fn setup_cloud_cover_callbacks(main_window: &MainWindow) {
                             // Decode image directly in the UI thread - should be fast for small images
                             let current_image_data = &images[*index];
                             let counter_text = format!("+{}h", *index + 1);
-                            match decode_png_to_slint_image(current_image_data) {
+                            match decode_png_to_slint_image_with_black_transparency(current_image_data) {
                                 Ok(slint_image) => {
                                     window.set_cloud_cover_image(slint_image);
                                     window.set_cloud_cover_counter(counter_text.into());
@@ -116,8 +116,8 @@ pub async fn fetch_cloud_cover_images(lat: f64, lon: f64) -> Result<Vec<Vec<u8>>
     let bbox = BoundingBox::new(lon - 12.7, lon + 12.7, lat - 5.0, lat + 5.0);
 
     // Image dimensions for cloud cover (16:9 ratio for left section)
-    let width = 400;
-    let height = 225; // 400 * 9/16 = 225
+    let width = 1280;
+    let height = 720; // 400 * 9/16 = 225
 
     let api = GeoMetAPI::new()?;
 
@@ -186,7 +186,7 @@ pub fn update_cloud_cover_display(main_window: &MainWindow) {
         debug!("Displaying cloud cover image: {} (index: {})", counter_text, *index);
 
         // Decode the PNG data to Slint image
-        match decode_png_to_slint_image(current_image_data) {
+        match decode_png_to_slint_image_with_black_transparency(current_image_data) {
             Ok(slint_image) => {
                 main_window.set_cloud_cover_image(slint_image);
                 main_window.set_cloud_cover_counter(counter_text.into());

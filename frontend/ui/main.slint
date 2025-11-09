@@ -119,6 +119,8 @@ export component MainWindow inherits Window {
     in-out property <image> zoomed_image;
     in-out property <image> legend;
     in-out property <string> zoomed_title;
+    property <float> zoom-factor: 2.0;
+    property <length> loupe-radius: 75px;
 
     // Navigation callbacks for manual control
     callback cloud_cover_previous();
@@ -207,6 +209,11 @@ export component MainWindow inherits Window {
                             height: 100%;
                             image-fit: fill;
                         }
+                        Rectangle {
+                            width: parent.width;
+                            height: parent.height;
+                            background: rgba(0, 0, 0, 0.3);
+                        }
 
                         // Cloud cover image (overlaid with alpha)
                         Image {
@@ -214,7 +221,6 @@ export component MainWindow inherits Window {
                             width: 100%;
                             height: 100%;
                             image-fit: fill;
-                            opacity: 80%;
                         }
 
                         // Red dot at center (coordinate location)
@@ -1093,9 +1099,9 @@ export component MainWindow inherits Window {
                 }
             }
 
-            TouchArea {
-                width: 1200px;
-                height: 600px;
+            touch_area := TouchArea {
+                width: 1120px;
+                height: 630px;
 
                 // Map background image
                 if (has_map): Image {
@@ -1103,7 +1109,12 @@ export component MainWindow inherits Window {
                     width: 100%;
                     height: 100%;
                     image-fit: contain;
-                    opacity: 70%;
+                }
+
+                if (has_map): Rectangle {
+                    width: parent.width;
+                    height: parent.height;
+                    background: rgba(0, 0, 0, 0.3);
                 }
 
                 if (image_opacity_reduction): Image {
@@ -1141,7 +1152,57 @@ export component MainWindow inherits Window {
                     x: (parent.width - 4px) / 2;
                     y: (parent.height - 4px) / 2;
                 }
-    
+
+                // Loupe overlay (the zoomed part)
+                Rectangle {
+                    visible: touch_area.has-hover;
+                    width: root.loupe-radius * 2;
+                    height: root.loupe-radius * 2;
+                    x: touch_area.mouse-x - root.loupe-radius;
+                    y: touch_area.mouse-y - root.loupe-radius;
+                    border-width: 2px;
+                    border-color: #888;
+                    clip: true;
+                    // Make it circular
+                    border-radius: root.loupe-radius;
+                    z: 100;
+
+                    // Map background image
+                    if (has_map): Image {
+                        source: map_image;
+                        // JavaScript-style background-position calculation: ((x * zoom) - w + bw)
+                        // where w = loupe-radius * 2, bw = 2px border
+                        x: -((touch_area.mouse-x * root.zoom-factor) - (root.loupe-radius * 2) + root.loupe-radius);
+                        y: -((touch_area.mouse-y * root.zoom-factor) - (root.loupe-radius * 2) + root.loupe-radius);
+                        // Scale the image for magnification
+                        width: touch_area.width * root.zoom-factor;
+                        height: touch_area.height * root.zoom-factor;
+                    }
+
+                    if (image_opacity_reduction): Image {
+                        source: zoomed_image;
+                        // JavaScript-style background-position calculation: ((x * zoom) - w + bw)
+                        // where w = loupe-radius * 2, bw = 2px border
+                        x: -((touch_area.mouse-x * root.zoom-factor) - (root.loupe-radius * 2) + root.loupe-radius);
+                        y: -((touch_area.mouse-y * root.zoom-factor) - (root.loupe-radius * 2) + root.loupe-radius);
+                        // Scale the image for magnification
+                        width: touch_area.width * root.zoom-factor;
+                        height: touch_area.height * root.zoom-factor;
+                        opacity: 70%;
+                    }
+
+                    if (!image_opacity_reduction): Image {
+                        source: root.zoomed_image;
+                        // JavaScript-style background-position calculation: ((x * zoom) - w + bw)
+                        // where w = loupe-radius * 2, bw = 2px border
+                        x: -((touch_area.mouse-x * root.zoom-factor) - (root.loupe-radius * 2) + root.loupe-radius);
+                        y: -((touch_area.mouse-y * root.zoom-factor) - (root.loupe-radius * 2) + root.loupe-radius);
+                        // Scale the image for magnification
+                        width: touch_area.width * root.zoom-factor;
+                        height: touch_area.height * root.zoom-factor;
+                    }
+                }
+
                 clicked => {
                     show_zoomed_image = false;
                     has_map = false;
