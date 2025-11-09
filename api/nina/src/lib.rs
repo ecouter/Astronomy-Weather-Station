@@ -99,6 +99,78 @@ pub struct GuideStepsHistory {
     pub scale: serde_json::Value,
 }
 
+/// Pixel and arcsecond error data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PixelArcsec {
+    #[serde(rename = "Pixel")]
+    pub pixel: f64,
+    #[serde(rename = "Arcseconds")]
+    pub arcseconds: f64,
+}
+
+/// RMS error data for guider
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuiderRMSError {
+    #[serde(rename = "RA")]
+    pub ra: PixelArcsec,
+    #[serde(rename = "Dec")]
+    pub dec: PixelArcsec,
+    #[serde(rename = "Total")]
+    pub total: PixelArcsec,
+    #[serde(rename = "PeakRA")]
+    pub peak_ra: PixelArcsec,
+    #[serde(rename = "PeakDec")]
+    pub peak_dec: PixelArcsec,
+}
+
+/// Last guide step data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LastGuideStep {
+    #[serde(rename = "RADistanceRaw")]
+    pub ra_distance_raw: f64,
+    #[serde(rename = "DECDistanceRaw")]
+    pub dec_distance_raw: f64,
+    #[serde(rename = "RADuration")]
+    pub ra_duration: f64,
+    #[serde(rename = "DECDuration")]
+    pub dec_duration: f64,
+}
+
+/// Guider information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuiderInfo {
+    #[serde(rename = "Connected")]
+    pub connected: bool,
+    #[serde(rename = "Name")]
+    pub name: String,
+    #[serde(rename = "DisplayName")]
+    pub display_name: String,
+    #[serde(rename = "Description")]
+    pub description: String,
+    #[serde(rename = "DriverInfo")]
+    pub driver_info: String,
+    #[serde(rename = "DriverVersion")]
+    pub driver_version: String,
+    #[serde(rename = "DeviceId")]
+    pub device_id: String,
+    #[serde(rename = "CanClearCalibration")]
+    pub can_clear_calibration: bool,
+    #[serde(rename = "CanSetShiftRate")]
+    pub can_set_shift_rate: bool,
+    #[serde(rename = "CanGetLockPosition")]
+    pub can_get_lock_position: bool,
+    #[serde(rename = "SupportedActions")]
+    pub supported_actions: Vec<String>,
+    #[serde(rename = "RMSError")]
+    pub rms_error: GuiderRMSError,
+    #[serde(rename = "PixelScale")]
+    pub pixel_scale: f64,
+    #[serde(rename = "LastGuideStep")]
+    pub last_guide_step: LastGuideStep,
+    #[serde(rename = "State")]
+    pub state: String,
+}
+
 /// Parameters for prepared image request
 #[derive(Debug, Clone, Default)]
 pub struct PreparedImageParams {
@@ -175,6 +247,19 @@ pub async fn fetch_guiding_graph(base_url: &str) -> Result<GuideStepsHistory, an
     let client = reqwest::Client::new();
     let response = client.get(&url).send().await?;
     let nina_response: NinaResponse<GuideStepsHistory> = response.json().await?;
+    if nina_response.success {
+        Ok(nina_response.response)
+    } else {
+        Err(anyhow::anyhow!("NINA API error: {}", nina_response.error))
+    }
+}
+
+/// Fetch guider information from NINA
+pub async fn fetch_guider_info(base_url: &str) -> Result<GuiderInfo, anyhow::Error> {
+    let url = format!("{}/v2/api/equipment/guider/info", base_url.trim_end_matches('/'));
+    let client = reqwest::Client::new();
+    let response = client.get(&url).send().await?;
+    let nina_response: NinaResponse<GuiderInfo> = response.json().await?;
     if nina_response.success {
         Ok(nina_response.response)
     } else {

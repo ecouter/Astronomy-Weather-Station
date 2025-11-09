@@ -91,9 +91,34 @@ async fn update_single_nina_image(main_window: &MainWindow, slot_index: usize, b
 
 /// Fetch and update a single NINA guiding graph for the given slot
 async fn update_single_nina_guiding_graph(main_window: &MainWindow, slot_index: usize, base_url: &str) -> Result<(), Box<dyn std::error::Error>> {
-    use nina::{fetch_guiding_graph, generate_guiding_graph_png};
+    use nina::{fetch_guiding_graph, generate_guiding_graph_png, fetch_guider_info};
 
     info!("Starting guiding graph update for NINA slot {} from URL: {}", slot_index + 1, base_url);
+
+    // Fetch guider info first
+    let guider_state = match fetch_guider_info(base_url).await {
+        Ok(guider_info) => {
+            info!("Successfully fetched guider info for slot {}: state='{}'", slot_index + 1, guider_info.state);
+            Some(guider_info.state)
+        }
+        Err(e) => {
+            error!("Failed to fetch guider info from {} for slot {}: {}", base_url, slot_index + 1, e);
+            None
+        }
+    };
+
+    // Update guider state property
+    if let Some(state) = guider_state {
+        match slot_index {
+            0 => main_window.set_nina_guider_state1(state.into()),
+            1 => main_window.set_nina_guider_state2(state.into()),
+            2 => main_window.set_nina_guider_state3(state.into()),
+            3 => main_window.set_nina_guider_state4(state.into()),
+            4 => main_window.set_nina_guider_state5(state.into()),
+            5 => main_window.set_nina_guider_state6(state.into()),
+            _ => warn!("Invalid slot index {} for guider state update", slot_index),
+        }
+    }
 
     match fetch_guiding_graph(base_url).await {
         Ok(graph_data) => {
