@@ -10,6 +10,12 @@ export component NinaPage inherits Rectangle {
     in property <image> image4;
     in property <image> image5;
     in property <image> image6;
+    in property <image> guiding_image1;
+    in property <image> guiding_image2;
+    in property <image> guiding_image3;
+    in property <image> guiding_image4;
+    in property <image> guiding_image5;
+    in property <image> guiding_image6;
     in-out property <string> url1;
     in-out property <string> url2;
     in-out property <string> url3;
@@ -83,6 +89,14 @@ export component NinaPage inherits Rectangle {
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
+
+                        // Guiding graph overlay on bottom
+                        if (guiding_image1.width > 0 && guiding_image1.height > 0): Image {
+                            source: guiding_image1;
+                            width: 100%;
+                            y: 220px; // Position at bottom
+                            image-fit: contain;
+                        }
                     }
                     clicked => {
                         if (image1.width > 0 && image1.height > 0) {
@@ -120,6 +134,14 @@ export component NinaPage inherits Rectangle {
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
+
+                        // Guiding graph overlay on bottom
+                        if (guiding_image2.width > 0 && guiding_image2.height > 0): Image {
+                            source: guiding_image2;
+                            width: 100%;
+                            y: 220px; // Position at bottom
+                            image-fit: contain;
+                        }
                     }
                     clicked => {
                         if (image2.width > 0 && image2.height > 0) {
@@ -156,6 +178,14 @@ export component NinaPage inherits Rectangle {
                             font-size: 48px;
                             horizontal-alignment: center;
                             vertical-alignment: center;
+                        }
+
+                        // Guiding graph overlay on bottom
+                        if (guiding_image3.width > 0 && guiding_image3.height > 0): Image {
+                            source: guiding_image3;
+                            width: 100%;
+                            y: 220px; // Position at bottom
+                            image-fit: contain;
                         }
                     }
                     clicked => {
@@ -199,6 +229,14 @@ export component NinaPage inherits Rectangle {
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
+
+                        // Guiding graph overlay on bottom
+                        if (guiding_image4.width > 0 && guiding_image4.height > 0): Image {
+                            source: guiding_image4;
+                            width: 100%;
+                            y: 220px; // Position at bottom
+                            image-fit: contain;
+                        }
                     }
                     clicked => {
                         if (image4.width > 0 && image4.height > 0) {
@@ -236,6 +274,14 @@ export component NinaPage inherits Rectangle {
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
+
+                        // Guiding graph overlay on bottom
+                        if (guiding_image5.width > 0 && guiding_image5.height > 0): Image {
+                            source: guiding_image5;
+                            width: 100%;
+                            y: 220px; // Position at bottom
+                            image-fit: contain;
+                        }
                     }
                     clicked => {
                         if (image5.width > 0 && image5.height > 0) {
@@ -272,6 +318,14 @@ export component NinaPage inherits Rectangle {
                             font-size: 48px;
                             horizontal-alignment: center;
                             vertical-alignment: center;
+                        }
+
+                        // Guiding graph overlay on bottom
+                        if (guiding_image6.width > 0 && guiding_image6.height > 0): Image {
+                            source: guiding_image6;
+                            width: 100%;
+                            y: 220px; // Position at bottom
+                            image-fit: contain;
                         }
                     }
                     clicked => {

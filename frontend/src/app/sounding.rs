@@ -67,7 +67,7 @@ pub async fn fetch_sounding_image(lat: f64, lon: f64) -> Result<Vec<u8>, Box<dyn
         .to_string_lossy()
         .to_string();
 
-    let result = sharppy::generate_gfs_sounding_async(
+    /*let result = sharppy::generate_gfs_sounding_async(
         lat,
         lon,
         Some(output_path),
@@ -81,7 +81,10 @@ pub async fn fetch_sounding_image(lat: f64, lon: f64) -> Result<Vec<u8>, Box<dyn
     let png_data = std::fs::read(png_path)?;
 
     info!("Successfully fetched sounding image");
-    Ok(png_data)
+    Ok(png_data)*/
+
+    // Temporary: return empty data since sharppy is disabled
+    Err("SHARPpy disabled".into())
 }
 
 pub fn set_sounding_image(main_window: &MainWindow, image_data: Vec<u8>) {

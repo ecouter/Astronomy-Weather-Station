@@ -96,7 +96,7 @@ pub struct GuideStepsHistory {
     #[serde(rename = "PixelScale")]
     pub pixel_scale: f64,
     #[serde(rename = "Scale")]
-    pub scale: u32,
+    pub scale: serde_json::Value,
 }
 
 /// Parameters for prepared image request
@@ -171,7 +171,7 @@ pub struct ImagePreparedEvent {
 
 /// Fetch guiding graph data from NINA
 pub async fn fetch_guiding_graph(base_url: &str) -> Result<GuideStepsHistory, anyhow::Error> {
-    let url = format!("{}/equipment/guider/graph", base_url.trim_end_matches('/'));
+    let url = format!("{}/v2/api/equipment/guider/graph", base_url.trim_end_matches('/'));
     let client = reqwest::Client::new();
     let response = client.get(&url).send().await?;
     let nina_response: NinaResponse<GuideStepsHistory> = response.json().await?;
@@ -376,4 +376,191 @@ where
     });
 
     (handle, stop_tx)
+}
+
+/// Generate a guiding graph PNG for the given data
+pub fn generate_guiding_graph_png(graph_data: &GuideStepsHistory, slot_index: usize) -> Result<Vec<u8>, anyhow::Error> {
+    use plotters::prelude::*;
+
+    info!("Generating guiding graph for slot {} with {} guide steps", slot_index + 1, graph_data.guide_steps.len());
+
+    // Get only the last HistorySize points, similar to Vue.js: steps.slice(-size)
+    let history_size = graph_data.history_size as usize;
+    let steps_to_show: Vec<&GuideStep> = if graph_data.guide_steps.len() > history_size {
+        graph_data.guide_steps.iter().rev().take(history_size).rev().collect()
+    } else {
+        graph_data.guide_steps.iter().collect()
+    };
+
+    info!("Using {} steps for slot {}", steps_to_show.len(), slot_index + 1);
+
+    // Prepare data arrays like Vue.js Chart.js datasets
+    let mut ra_distances = Vec::new();
+    let mut dec_distances = Vec::new();
+    let mut ra_durations = Vec::new();
+    let mut dec_durations = Vec::new();
+    let mut dither_points = Vec::new();
+
+    let mut max_duration = 0.0f64;
+
+    for step in &steps_to_show {
+        let ra = step.ra_duration as f64;
+        let dec = step.dec_duration as f64;
+
+        ra_distances.push(step.ra_distance_raw_display as f64);
+        dec_distances.push(step.dec_distance_raw_display as f64);
+        ra_durations.push(ra);
+        dec_durations.push(dec);
+
+        // Track max duration for scaling like Vue.js
+        max_duration = max_duration.max(ra.abs()).max(dec.abs());
+
+        // Dither points (when Dither is not "NaN") - like Vue.js
+        if step.dither != "NaN" {
+            dither_points.push((step.id as f64, 0.0)); // At zero line
+        }
+    }
+
+    // Fixed Y-axis scaling from -4 to 4 like Vue.js
+    let min_y = -4.0;
+    let max_y = 4.0;
+
+    // Dynamic scaling for duration bars - fallback to 100ms like Vue.js
+    let max_abs = max_duration.max(100.0);
+
+    // Create bitmap buffer for plotters (RGB format: 3 bytes per pixel)
+    let width = 800;
+    let height = 180;
+    let mut bitmap_buffer = vec![0u8; (width * height * 3) as usize];
+
+    {
+        let backend = plotters::backend::BitMapBackend::with_buffer(&mut bitmap_buffer, (width, height));
+        let root = backend.into_drawing_area();
+
+        // Fill with gray background
+        root.fill(&RGBColor(39, 43, 46))?;
+
+        // Create chart builder without margins (like original)
+        let mut chart = ChartBuilder::on(&root)
+            .x_label_area_size(30)
+            .y_label_area_size(60)
+            .build_cartesian_2d(0.0..history_size as f64, min_y..max_y)?;
+
+        // Configure mesh with grid lines and labels
+        chart.configure_mesh()
+            .x_labels(0) // No x-axis labels since it's time-based
+            .y_labels(5)
+            .y_label_formatter(&|y| format!("{:.0}", y))
+            .draw()?;
+
+        // Prepare RA distance data points for LineSeries
+        let ra_points: Vec<(f64, f64)> = ra_distances.iter().enumerate()
+            .map(|(i, &y)| (i as f64, y.clamp(min_y, max_y)))
+            .collect();
+
+        // Draw RA distance line using LineSeries
+        chart.draw_series(LineSeries::new(
+            ra_points,
+            RGBColor(70, 130, 180).stroke_width(2), // Exact Vue.js blue
+        ))?;
+
+        // Prepare Dec distance data points for LineSeries
+        let dec_points: Vec<(f64, f64)> = dec_distances.iter().enumerate()
+            .map(|(i, &y)| (i as f64, y.clamp(min_y, max_y)))
+            .collect();
+
+        // Draw Dec distance line using LineSeries
+        chart.draw_series(LineSeries::new(
+            dec_points,
+            RGBColor(220, 20, 60).stroke_width(2), // Exact Vue.js red
+        ))?;
+
+        // Draw RA duration bars manually (ChartBuilder doesn't have built-in bars)
+        for (i, &duration) in ra_durations.iter().enumerate() {
+            if duration != 0.0 {
+                let x = i as f64;
+                let bar_color = RGBColor(70, 130, 180).mix(0.4); // Steel blue with 0.4 alpha
+
+                // Bars always start from 0 and extend in the direction of the duration
+                let y_start = 0.0;
+                let y_end = (duration / max_abs) * (max_y - min_y) * 0.6;
+
+                // Convert chart coordinates to screen coordinates for manual drawing
+                let screen_x = chart.backend_coord(&(x, 0.0)).0;
+                let screen_y_start = chart.backend_coord(&(x, y_start)).1;
+                let screen_y_end = chart.backend_coord(&(x, y_end)).1;
+
+                // Draw thicker bar (3 pixels wide) - handle both positive and negative directions
+                let (y_min, y_max) = if screen_y_start < screen_y_end {
+                    (screen_y_start, screen_y_end)
+                } else {
+                    (screen_y_end, screen_y_start)
+                };
+
+                for dx in 0..3 {
+                    for y in y_min..=y_max {
+                        root.draw(&plotters::element::Pixel::new((screen_x as i32 + dx, y as i32), bar_color))?;
+                    }
+                }
+            }
+        }
+
+        // Draw Dec duration bars manually
+        for (i, &duration) in dec_durations.iter().enumerate() {
+            if duration != 0.0 {
+                let x = i as f64;
+                let bar_color = RGBColor(220, 20, 60).mix(0.4); // Crimson with 0.4 alpha
+
+                // Bars always start from 0 and extend in the direction of the duration
+                let y_start = 0.0;
+                let y_end = (duration / max_abs) * (max_y - min_y) * 0.6;
+
+                // Convert chart coordinates to screen coordinates for manual drawing
+                let screen_x = chart.backend_coord(&(x + 0.1, 0.0)).0; // Slight offset from RA bars
+                let screen_y_start = chart.backend_coord(&(x, y_start)).1;
+                let screen_y_end = chart.backend_coord(&(x, y_end)).1;
+
+                // Draw thicker bar (3 pixels wide) - handle both positive and negative directions
+                let (y_min, y_max) = if screen_y_start < screen_y_end {
+                    (screen_y_start, screen_y_end)
+                } else {
+                    (screen_y_end, screen_y_start)
+                };
+
+                for dx in 0..3 {
+                    for y in y_min..=y_max {
+                        root.draw(&plotters::element::Pixel::new((screen_x as i32 + dx, y as i32), bar_color))?;
+                    }
+                }
+            }
+        }
+
+        // Draw dither points using PointSeries with triangle markers
+        if !dither_points.is_empty() {
+            chart.draw_series(PointSeries::of_element(
+                dither_points,
+                6, // pointRadius: 6 in Vue.js
+                RGBColor(255, 165, 0), // Orange - exact Vue.js color
+                &|c, s, st| {
+                    return plotters::element::TriangleMarker::new(c, s, st.filled());
+                },
+            ))?;
+        }
+
+        // Ensure the drawing is completed
+        root.present()?;
+    }
+
+    // Convert bitmap buffer to image::RgbImage and encode to PNG
+    let img = image::RgbImage::from_raw(width, height, bitmap_buffer)
+        .ok_or_else(|| anyhow::anyhow!("Failed to create image from bitmap buffer"))?;
+
+    // Crop the image (60px from left, 30px from bottom -> 740x150)
+    let cropped = image::DynamicImage::ImageRgb8(img).crop(60, 0, 740, 150);
+
+    // Encode cropped image to PNG bytes
+    let mut png_buffer = Vec::new();
+    cropped.write_to(&mut std::io::Cursor::new(&mut png_buffer), image::ImageFormat::Png)?;
+
+    Ok(png_buffer)
 }
