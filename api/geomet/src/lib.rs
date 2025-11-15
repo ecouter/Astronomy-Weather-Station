@@ -115,6 +115,19 @@ impl GeoMetAPI {
         width: u32,
         height: u32,
     ) -> Result<Vec<u8>> {
+        self.get_wms_image_with_style(layer, time, bbox, width, height, None).await
+    }
+
+    /// Fetch WMS image with optional style
+    pub async fn get_wms_image_with_style(
+        &self,
+        layer: &str,
+        time: &str,
+        bbox: BoundingBox,
+        width: u32,
+        height: u32,
+        style: Option<&str>,
+    ) -> Result<Vec<u8>> {
         // For WMS 1.3.0 with EPSG:4326, BBOX format is: minY,minX,maxY,maxX
         let bbox_str = format!("{},{},{},{}", bbox.min_lat, bbox.min_lon, bbox.max_lat, bbox.max_lon);
         let width_str = width.to_string();
@@ -125,7 +138,7 @@ impl GeoMetAPI {
         params.insert("VERSION", "1.3.0");
         params.insert("REQUEST", "GetMap");
         params.insert("LAYERS", layer);
-        params.insert("STYLES", "");  // Use default style
+        params.insert("STYLES", style.unwrap_or(""));  // Use specified style or default
         params.insert("CRS", "EPSG:4326");
         params.insert("BBOX", &bbox_str);
         params.insert("WIDTH", &width_str);

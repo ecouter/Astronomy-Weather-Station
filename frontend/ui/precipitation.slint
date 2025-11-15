@@ -1,0 +1,853 @@
+import { Button, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { IconButton } from "../../material-1.0/ui/components/icon_button.slint";
+import { Icons } from "../../material-1.0/ui/icons/icons.slint";
+
+export component PrecipitationPage inherits Rectangle {
+    in property <bool> loading;
+    in property <string> error_message;
+
+    in property <image> base_map_image;
+    in property <image> active_precip_image;
+    in property <image> legend_image;
+
+    in property <string> last_update_text;
+    in property <string> active_model_label;
+    in property <string> active_layer_label;
+    in property <string> active_time_label;
+
+    in property <int> selected_model_index;
+    in property <int> selected_layer_index;
+    in property <int> selected_time_index;
+
+    in property <bool> show_isobars;
+    in property <bool> show_zero_deg_isotherm;
+    in property <bool> show_location_marker;
+
+    // Point data properties (probabilities, amounts, snow depth, etc.)
+    in property <int> prob_rain;
+    in property <int> prob_snow;
+    in property <int> prob_freezing_rain;
+    in property <int> prob_ice_pellets;
+    in property <int> prob_any_precip;
+
+    in property <float> qpf_6h;
+    in property <float> qpf_12h;
+    in property <float> qpf_24h;
+
+    in property <float> snow_depth;
+    in property <float> air_temp;
+    in property <float> dewpoint;
+    in property <float> pressure;
+
+    in property <string> system_summary;
+
+    // Callbacks to Rust
+    callback go_back();
+    callback model_changed(int);
+    callback layer_changed(int);
+    callback time_changed(int);
+    callback toggle_isobars(bool);
+    callback toggle_zero_deg_isotherm(bool);
+    callback toggle_location_marker(bool);
+    callback refresh_now();
+    callback open_zoom();
+
+    // Styling
+    background: #101010;
+    border-radius: 0px;
+
+    VerticalLayout {
+        width: 100%;
+        height: 100%;
+        spacing: 8px;
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+
+        // Top bar
+        HorizontalLayout {
+            width: 100%;
+            height: 40px;
+            spacing: 12px;
+
+            Text {
+                text: "Precipitation Intelligence";
+                color: #ffffff;
+                font-size: 22px;
+                font-weight: 700;
+                horizontal-alignment: left;
+                vertical-alignment: center;
+            }
+
+            VerticalLayout {
+                spacing: 2px;
+                Text {
+                    text: active_model_label + " • " + active_layer_label;
+                    color: #a0a0a0;
+                    font-size: 11px;
+                    horizontal-alignment: left;
+                }
+                Text {
+                    text: last_update_text;
+                    color: #707070;
+                    font-size: 9px;
+                    horizontal-alignment: left;
+                }
+            }
+
+            Rectangle { // spacer
+                horizontal-stretch: 1;
+                background: transparent;
+            }
+
+            // Refresh button (no icon dependency to avoid Icons.* mismatch)
+            Button {
+                text: "Refresh";
+                clicked => { refresh_now(); }
+            }
+
+            Button {
+                text: "Back to Overview";
+                clicked => { go_back(); }
+            }
+        }
+
+        // Upper control strip
+        VerticalLayout {
+            width: 100%;
+            spacing: 6px;
+
+            // Model tabs
+            HorizontalLayout {
+                spacing: 6px;
+
+                // Radar (Now)
+                Rectangle {
+                    background: selected_model_index == 0 ? #2f7fff : #202020;
+                    border-radius: 6px;
+                    height: 24px;
+                    width: 120px;
+
+                    TouchArea {
+                        clicked => { model_changed(0); }
+                    }
+
+                    Text {
+                        text: "Radar (Now)";
+                        color: #ffffff;
+                        font-size: 11px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // HRDPS 0–48h
+                Rectangle {
+                    background: selected_model_index == 1 ? #2f7fff : #202020;
+                    border-radius: 6px;
+                    height: 24px;
+                    width: 140px;
+
+                    TouchArea {
+                        clicked => { model_changed(1); }
+                    }
+
+                    Text {
+                        text: "HRDPS 0–48h";
+                        color: #ffffff;
+                        font-size: 11px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // RDPS 0–80h
+                Rectangle {
+                    background: selected_model_index == 2 ? #2f7fff : #202020;
+                    border-radius: 6px;
+                    height: 24px;
+                    width: 140px;
+
+                    TouchArea {
+                        clicked => { model_changed(2); }
+                    }
+
+                    Text {
+                        text: "RDPS 0–80h";
+                        color: #ffffff;
+                        font-size: 11px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            // Layer selector (inline to avoid local function for compatibility)
+            HorizontalLayout {
+                spacing: 4px;
+                visible: selected_model_index == 0 ? false : true;
+
+                // Precip Type
+                Rectangle {
+                    background: selected_layer_index == 0 ? #404040 : #181818;
+                    border-radius: 5px;
+                    height: 22px;
+                    padding-left: 8px;
+                    padding-right: 8px;
+
+                    TouchArea {
+                        clicked => { layer_changed(0); }
+                    }
+
+                    Text {
+                        text: "Precip Type";
+                        color: #ffffff;
+                        font-size: 9px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // Precip Prob
+                Rectangle {
+                    background: selected_layer_index == 1 ? #404040 : #181818;
+                    border-radius: 5px;
+                    height: 22px;
+                    padding-left: 8px;
+                    padding-right: 8px;
+
+                    TouchArea {
+                        clicked => { layer_changed(1); }
+                    }
+
+                    Text {
+                        text: "Precip Prob";
+                        color: #ffffff;
+                        font-size: 9px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // Precip Amount
+                Rectangle {
+                    background: selected_layer_index == 2 ? #404040 : #181818;
+                    border-radius: 5px;
+                    height: 22px;
+                    padding-left: 8px;
+                    padding-right: 8px;
+
+                    TouchArea {
+                        clicked => { layer_changed(2); }
+                    }
+
+                    Text {
+                        text: "Precip Amount";
+                        color: #ffffff;
+                        font-size: 9px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // Freezing/Mixed
+                Rectangle {
+                    background: selected_layer_index == 3 ? #404040 : #181818;
+                    border-radius: 5px;
+                    height: 22px;
+                    padding-left: 8px;
+                    padding-right: 8px;
+
+                    TouchArea {
+                        clicked => { layer_changed(3); }
+                    }
+
+                    Text {
+                        text: "Freezing/Mixed";
+                        color: #ffffff;
+                        font-size: 9px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // Snow Depth
+                Rectangle {
+                    background: selected_layer_index == 4 ? #404040 : #181818;
+                    border-radius: 5px;
+                    height: 22px;
+                    padding-left: 8px;
+                    padding-right: 8px;
+
+                    TouchArea {
+                        clicked => { layer_changed(4); }
+                    }
+
+                    Text {
+                        text: "Snow Depth";
+                        color: #ffffff;
+                        font-size: 9px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // Temp & Pressure
+                Rectangle {
+                    background: selected_layer_index == 5 ? #404040 : #181818;
+                    border-radius: 5px;
+                    height: 22px;
+                    padding-left: 8px;
+                    padding-right: 8px;
+
+                    TouchArea {
+                        clicked => { layer_changed(5); }
+                    }
+
+                    Text {
+                        text: "Temp & Pressure";
+                        color: #ffffff;
+                        font-size: 9px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            // Overlay toggles + time controls
+            HorizontalLayout {
+                spacing: 10px;
+
+                // When Radar is selected, show Rain/Snow toggle instead of model layer toggles.
+                if (selected_model_index == 0) : Rectangle {
+                    background: #181818;
+                    border-radius: 10px;
+                    height: 18px;
+                    padding-left: 8px;
+                    padding-right: 8px;
+
+                    HorizontalLayout {
+                        spacing: 4px;
+                        Text {
+                            text: "Radar:";
+                            color: #ffffff;
+                            font-size: 8px;
+                            vertical-alignment: center;
+                        }
+
+                        Rectangle {
+                            background: selected_layer_index == 6 ? #2f7fff : #303030;
+                            border-radius: 8px;
+                            padding-left: 6px;
+                            padding-right: 6px;
+                            height: 14px;
+
+                            Text {
+                                text: "Rain";
+                                color: #ffffff;
+                                font-size: 8px;
+                                vertical-alignment: center;
+                                horizontal-alignment: center;
+                            }
+
+                            TouchArea {
+                                clicked => { layer_changed(6); }
+                            }
+                        }
+
+                        Rectangle {
+                            background: selected_layer_index == 7 ? #2f7fff : #303030;
+                            border-radius: 8px;
+                            padding-left: 6px;
+                            padding-right: 6px;
+                            height: 14px;
+
+                            Text {
+                                text: "Snow";
+                                color: #ffffff;
+                                font-size: 8px;
+                                vertical-alignment: center;
+                                horizontal-alignment: center;
+                            }
+
+                            TouchArea {
+                                clicked => { layer_changed(7); }
+                            }
+                        }
+                    }
+                }
+
+                // For non-radar models, show overlay toggles (isobars, isotherm, location).
+                if (selected_model_index != 0) : HorizontalLayout {
+                    spacing: 8px;
+
+                    Rectangle {
+                        background: show_isobars ? #2f7fff : #181818;
+                        border-radius: 10px;
+                        height: 18px;
+                        padding-left: 8px;
+                        padding-right: 8px;
+
+                        Text {
+                            text: "Isobars";
+                            color: #ffffff;
+                            font-size: 8px;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+
+                        TouchArea {
+                            clicked => { toggle_isobars(!show_isobars); }
+                        }
+                    }
+
+                    Rectangle {
+                        background: show_zero_deg_isotherm ? #2f7fff : #181818;
+                        border-radius: 10px;
+                        height: 18px;
+                        padding-left: 8px;
+                        padding-right: 8px;
+
+                        Text {
+                            text: "0°C Isotherm";
+                            color: #ffffff;
+                            font-size: 8px;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+
+                        TouchArea {
+                            clicked => { toggle_zero_deg_isotherm(!show_zero_deg_isotherm); }
+                        }
+                    }
+
+                    Rectangle {
+                        background: show_location_marker ? #2f7fff : #181818;
+                        border-radius: 10px;
+                        height: 18px;
+                        padding-left: 8px;
+                        padding-right: 8px;
+
+                        Text {
+                            text: "Location";
+                            color: #ffffff;
+                            font-size: 8px;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+
+                        TouchArea {
+                            clicked => { toggle_location_marker(!show_location_marker); }
+                        }
+                    }
+                }
+
+                Rectangle { horizontal-stretch: 1; background: transparent; }
+
+                // Time controls: prev / label / next
+                IconButton {
+                    icon: Icons.chevron_backward;
+                    tooltip: "Previous time step";
+                    clicked => { time_changed(selected_time_index - 1); }
+                }
+
+                Text {
+                    text: active_time_label;
+                    color: #ffffff;
+                    font-size: 9px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    width: 80px;
+                }
+
+                IconButton {
+                    icon: Icons.chevron_forward;
+                    tooltip: "Next time step";
+                    clicked => { time_changed(selected_time_index + 1); }
+                }
+            }
+        }
+
+        // Main content: map + right-hand context
+        HorizontalLayout {
+            width: 100%;
+            spacing: 8px;
+
+            // Map area
+            Rectangle {
+                horizontal-stretch: 1;
+                //background: #050505;
+                border-radius: 8px;
+                clip: true;
+
+                // Base map
+                if (!loading && error_message == "") : Image {
+                    source: base_map_image;
+                    y: -10px;
+                    width: 100%;
+                    height: 100%;
+                    image-fit: contain;
+                }
+
+                // Dark overlay to match aesthetic
+                Rectangle {
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.35);
+                }
+
+                // Active precip layer
+                if (!loading && error_message == "") : Image {
+                    source: active_precip_image;
+                    width: 100%;
+                    height: 100%;
+                    image-fit: contain;
+                    opacity: 70%;
+                }
+
+                // Location marker
+                if (show_location_marker && !loading && error_message == "") : Rectangle {
+                    width: 5px;
+                    height: 5px;
+                    background: #ff0000;
+                    border-radius: 5px;
+                    x: (parent.width - 5px) / 2;
+                    y: (parent.height - 5px) / 2;
+                }
+
+                // Loading / error overlays
+                if (loading) : Text {
+                    text: "Loading precipitation data...";
+                    color: #ffffff;
+                    font-size: 14px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                if (!loading && error_message != "") : Text {
+                    text: error_message;
+                    color: #ff5555;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    padding-left: 16px;
+                    padding-right: 16px;
+                }
+
+                // Legend in bottom-right
+                if (!loading && error_message == "") : Image {
+                    source: legend_image;
+                    width: parent.width * 0.28;
+                    height: parent.height * 0.28;
+                    x: parent.width - self.width - 8px;
+                    y: parent.height - self.height - 8px;
+                    image-fit: contain;
+                    opacity: 0.95;
+                }
+
+                // Touch to open zoom overlay (handled in MainWindow)
+                TouchArea {
+                    clicked => {
+                        if (!loading && error_message == "") {
+                            open_zoom();
+                        }
+                    }
+                }
+            }
+
+            // Right-side metrics/context column
+            VerticalLayout {
+                width: 260px;
+                spacing: 8px;
+
+                // Probabilities card
+                Rectangle {
+                    background: #181818;
+                    border-radius: 8px;
+                    height: 90px;
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    padding-top: 6px;
+                    padding-bottom: 6px;
+
+                    VerticalLayout {
+                        spacing: 2px;
+
+                        Text {
+                            text: "Precipitation probabilities";
+                            color: #ffffff;
+                            font-size: 10px;
+                            font-weight: 600;
+                        }
+
+                        // Inline rows (no nested function for compatibility)
+                        HorizontalLayout {
+                            spacing: 4px;
+                            Text {
+                                text: "Any precip";
+                                color: #c0c0c0;
+                                font-size: 8px;
+                                width: 80px;
+                            }
+                            Rectangle {
+                                horizontal-stretch: 1;
+                                height: 6px;
+                                border-radius: 3px;
+                                background: #202020;
+
+                                Rectangle {
+                                    width: parent.width * prob_any_precip / 100;
+                                    height: 100%;
+                                    border-radius: 3px;
+                                    background: #2f7fff;
+                                }
+                            }
+                            Text {
+                                text: prob_any_precip + "%";
+                                color: #ffffff;
+                                font-size: 8px;
+                                width: 26px;
+                                horizontal-alignment: right;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 4px;
+                            Text {
+                                text: "Rain";
+                                color: #c0c0c0;
+                                font-size: 8px;
+                                width: 80px;
+                            }
+                            Rectangle {
+                                horizontal-stretch: 1;
+                                height: 6px;
+                                border-radius: 3px;
+                                background: #202020;
+
+                                Rectangle {
+                                    width: parent.width * prob_rain / 100;
+                                    height: 100%;
+                                    border-radius: 3px;
+                                    background: #3a8f3a;
+                                }
+                            }
+                            Text {
+                                text: prob_rain + "%";
+                                color: #ffffff;
+                                font-size: 8px;
+                                width: 26px;
+                                horizontal-alignment: right;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 4px;
+                            Text {
+                                text: "Snow";
+                                color: #c0c0c0;
+                                font-size: 8px;
+                                width: 80px;
+                            }
+                            Rectangle {
+                                horizontal-stretch: 1;
+                                height: 6px;
+                                border-radius: 3px;
+                                background: #202020;
+
+                                Rectangle {
+                                    width: parent.width * prob_snow / 100;
+                                    height: 100%;
+                                    border-radius: 3px;
+                                    background: #3a8f3a;
+                                }
+                            }
+                            Text {
+                                text: prob_snow + "%";
+                                color: #ffffff;
+                                font-size: 8px;
+                                width: 26px;
+                                horizontal-alignment: right;
+                            }
+                        }
+                    }
+                }
+
+                // Freezing/mixed & QPF card
+                Rectangle {
+                    background: #181818;
+                    border-radius: 8px;
+                    height: 80px;
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    padding-top: 6px;
+                    padding-bottom: 6px;
+
+                    VerticalLayout {
+                        spacing: 2px;
+
+                        Text {
+                            text: "Freezing / Mixed & amounts";
+                            color: #ffffff;
+                            font-size: 10px;
+                            font-weight: 600;
+                        }
+
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Text {
+                                text: "Frzg rain " + prob_freezing_rain + "%";
+                                color: #ffaaaa;
+                                font-size: 8px;
+                            }
+                            Text {
+                                text: "Ice pellets " + prob_ice_pellets + "%";
+                                color: #ffdd88;
+                                font-size: 8px;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Text {
+                                text: "Next 6h: " + qpf_6h + " mm";
+                                color: #a0a0ff;
+                                font-size: 8px;
+                            }
+                            Text {
+                                text: "12h: " + qpf_12h + " mm";
+                                color: #a0a0ff;
+                                font-size: 8px;
+                            }
+                            Text {
+                                text: "24h: " + qpf_24h + " mm";
+                                color: #a0a0ff;
+                                font-size: 8px;
+                            }
+                        }
+                    }
+                }
+
+                // Snow depth / temp / pressure
+                Rectangle {
+                    background: #181818;
+                    border-radius: 8px;
+                    height: 70px;
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    padding-top: 6px;
+                    padding-bottom: 6px;
+
+                    VerticalLayout {
+                        spacing: 2px;
+
+                        Text {
+                            text: "Snow / Temperature / Pressure";
+                            color: #ffffff;
+                            font-size: 10px;
+                            font-weight: 600;
+                        }
+
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Text {
+                                text: "Snow depth: " + snow_depth + " cm";
+                                color: #c0e0ff;
+                                font-size: 8px;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Text {
+                                text: "Temp: " + air_temp + " °C";
+                                color: #ff9999;
+                                font-size: 8px;
+                            }
+                            Text {
+                                text: "Dewpt: " + dewpoint + " °C";
+                                color: #99ddff;
+                                font-size: 8px;
+                            }
+                            Text {
+                                text: "P: " + pressure + " hPa";
+                                color: #dddddd;
+                                font-size: 8px;
+                            }
+                        }
+                    }
+                }
+
+                // Systems / context
+                Rectangle {
+                    background: #181818;
+                    border-radius: 8px;
+                    horizontal-stretch: 1;
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    padding-top: 6px;
+                    padding-bottom: 6px;
+
+                    VerticalLayout {
+                        spacing: 4px;
+
+                        Text {
+                            text: "Synoptic context";
+                            color: #ffffff;
+                            font-size: 10px;
+                            font-weight: 600;
+                        }
+
+                        Text {
+                            text: system_summary;
+                            color: #b0b0b0;
+                            font-size: 8px;
+                            wrap: word-wrap;
+                            horizontal-alignment: left;
+                            vertical-alignment: top;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Bottom strip: run info and status
+        HorizontalLayout {
+            width: 100%;
+            height: 22px;
+            spacing: 14px;
+
+            Text {
+                text: "Model runs: " + last_update_text;
+                color: #707070;
+                font-size: 8px;
+                horizontal-alignment: left;
+            }
+
+            Rectangle { horizontal-stretch: 1; background: transparent; }
+
+            if (error_message != "") : Text {
+                text: "Status: " + error_message;
+                color: #ff5555;
+                font-size: 8px;
+                horizontal-alignment: right;
+            }
+
+            if (error_message == "" && !loading) : Text {
+                text: "Status: Precipitation page online";
+                color: #3fbf7f;
+                font-size: 8px;
+                horizontal-alignment: right;
+            }
+
+            if (loading) : Text {
+                text: "Status: Updating...";
+                color: #ffaa33;
+                font-size: 8px;
+                horizontal-alignment: right;
+            }
+        }
+    }
+}

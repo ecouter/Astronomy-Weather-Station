@@ -43,6 +43,7 @@ fn main() -> Result<(), slint::PlatformError> {
     app::wind::setup_wind_callbacks(&main_window);
     app::environment_canada::setup_environment_canada_callbacks(&main_window);
     app::sounding::setup_sounding_callbacks(&main_window);
+    app::precipitation::setup_precipitation_callbacks(&main_window);
 
     // Set up NINA URL change callback handler
     let main_window_weak_nina = main_window.as_weak();
@@ -199,6 +200,32 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
 
+    // Initial precipitation data load (non-blocking for UI)
+    {
+        let main_window_weak = main_window.as_weak();
+        let lat_p = lat;
+        let lon_p = lon;
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async move {
+                if let Err(e) =
+                    app::precipitation::fetch_initial_precipitation(lat_p, lon_p).await
+                {
+                    error!("Failed to fetch initial precipitation data: {}", e);
+                }
+                if let Some(window) = main_window_weak.upgrade() {
+                    // Update the precipitation view with whatever was loaded
+                    slint::invoke_from_event_loop(move || {
+                        if let Some(w) = main_window_weak.upgrade() {
+                            app::precipitation::update_precipitation_display(&w);
+                        }
+                    })
+                    .ok();
+                }
+            });
+        });
+    }
+
     // Channel for communication between background thread and UI thread
     let (tx, rx) = mpsc::channel();
     // Channel for cloud cover updates (not cycling)
@@ -276,24 +303,51 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         });
     });
+// Spawn background thread for Environment Canada updates (hourly)
+let env_canada_tx = cloud_tx.clone(); // Reuse channel for simplicity
+thread::spawn(move || {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let mut interval = tokio::time::interval(Duration::from_secs(3600)); // 1 hour
+        interval.tick().await; // Skip immediate first trigger
+        loop {
+            interval.tick().await;
+            // Signal the UI thread to update Environment Canada images
+            if env_canada_tx.send("env_canada_update").is_err() {
+                // UI thread has shut down
+                break;
+            }
+        }
+    });
+});
 
-    // Spawn background thread for Environment Canada updates (hourly)
-    let env_canada_tx = cloud_tx.clone(); // Reuse channel for simplicity
+// Spawn background thread for precipitation updates
+{
+    let main_window_weak = main_window.as_weak();
     thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            let mut interval = tokio::time::interval(Duration::from_secs(3600)); // 1 hour
-            interval.tick().await; // Skip immediate first trigger
+            // Radar every 30 minutes, models every 60 minutes (handled inside refresh)
+            let mut interval = tokio::time::interval(Duration::from_secs(60 * 30));
+            interval.tick().await; // skip immediate
             loop {
                 interval.tick().await;
-                // Signal the UI thread to update Environment Canada images
-                if env_canada_tx.send("env_canada_update").is_err() {
-                    // UI thread has shut down
-                    break;
+                if let Some(window) = main_window_weak.upgrade() {
+                    // Reload coordinates in case they changed
+                    if let Ok((lat, lon)) = app::coordinates::load_coordinates(&window) {
+                        if let Err(e) = app::precipitation::refresh_precipitation_data(lat, lon, &window).await {
+                            error!("Failed to refresh precipitation data: {}", e);
+                        }
+                    } else {
+                        error!("Unable to reload coordinates for precipitation refresh");
+                    }
+                } else {
+                    break; // UI closed
                 }
             }
         });
     });
+}
 
 
 

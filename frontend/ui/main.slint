@@ -2,6 +2,7 @@ import { Button, VerticalBox, HorizontalBox } from "std-widgets.slint";
 import { EnvironmentCanadaPage } from "environment_canada.slint";
 import { NinaPage } from "nina.slint";
 import { SoundingPage } from "sounding.slint";
+import { PrecipitationPage } from "precipitation.slint";
 import { IconButton } from "../../material-1.0/ui/components/icon_button.slint";
 import { Icons } from "../../material-1.0/ui/icons/icons.slint";
 
@@ -109,6 +110,42 @@ export component MainWindow inherits Window {
     in-out property <bool> show_env_canada: false;
     in-out property <bool> show_nina: false;
     in-out property <bool> show_sounding: false;
+    in-out property <bool> show_precipitation: false;
+
+    // Precipitation page bindings
+    in property <image> precipitation_base_map_image;
+    in property <image> precipitation_active_precip_image;
+    in property <image> precipitation_legend_image;
+
+    in property <string> precipitation_last_update_text;
+    in property <string> precipitation_active_model_label;
+    in property <string> precipitation_active_layer_label;
+    in property <string> precipitation_active_time_label;
+
+    in property <int> precipitation_selected_model_index;
+    in property <int> precipitation_selected_layer_index;
+    in property <int> precipitation_selected_time_index;
+
+    in property <bool> precipitation_show_isobars;
+    in property <bool> precipitation_show_zero_deg_isotherm;
+    in property <bool> precipitation_show_location_marker;
+
+    in property <int> precipitation_prob_rain;
+    in property <int> precipitation_prob_snow;
+    in property <int> precipitation_prob_freezing_rain;
+    in property <int> precipitation_prob_ice_pellets;
+    in property <int> precipitation_prob_any_precip;
+
+    in property <float> precipitation_qpf_6h;
+    in property <float> precipitation_qpf_12h;
+    in property <float> precipitation_qpf_24h;
+
+    in property <float> precipitation_snow_depth;
+    in property <float> precipitation_air_temp;
+    in property <float> precipitation_dewpoint;
+    in property <float> precipitation_pressure;
+
+    in property <string> precipitation_system_summary;
     in-out property <string> nina_url_change: "";
     in-out property <int> nina_url_index: -1;
     in-out property <bool> nina_force_update: false;
@@ -141,6 +178,15 @@ export component MainWindow inherits Window {
     callback env_canada_relative_humidity_next();
     callback show_sounding_page();
     callback nina_url_saved(int);
+
+    // Precipitation callbacks (handled in Rust via app::precipitation)
+    callback precipitation_model_changed(int);
+    callback precipitation_layer_changed(int);
+    callback precipitation_time_changed(int);
+    callback precipitation_refresh_now();
+    callback precipitation_toggle_isobars(bool);
+    callback precipitation_toggle_zero_deg_isotherm(bool);
+    callback precipitation_toggle_location_marker(bool);
 
     if (!show_env_canada): HorizontalBox {
         // Left side: Cloud cover prediction (top portion, 1/3 width)
@@ -201,12 +247,14 @@ export component MainWindow inherits Window {
                     if (!loading && error_message == "") : Rectangle {
                         width: 100%;
                         height: 100%;
+                        clip: true;
 
                         // Map background image
                         Image {
                             source: map_image;
                             width: 100%;
                             height: 100%;
+                            y: -10px;
                             image-fit: fill;
                         }
                         Rectangle {
@@ -664,12 +712,14 @@ export component MainWindow inherits Window {
                             if (!loading && error_message == "") : Rectangle {
                                 width: 100%;
                                 height: 100%;
+                                clip: true;
 
                                 // Map background image
                                 Image {
                                     source: map_image;
                                     width: 100%;
                                     height: 100%;
+                                    y: -10px;
                                     image-fit: fill;
                                     opacity: 70%;
                                 }
@@ -822,12 +872,14 @@ export component MainWindow inherits Window {
                             if (!loading && error_message == "") : Rectangle {
                                 width: 100%;
                                 height: 100%;
+                                clip: true;
 
                                 // Map background image
                                 Image {
                                     source: map_image;
                                     width: 100%;
                                     height: 100%;
+                                    y: -10px;
                                     image-fit: fill;
                                 }
 
@@ -949,6 +1001,14 @@ export component MainWindow inherits Window {
                                 show_sounding = true;
                             }
                         }
+
+                        Button {
+                            width: 220px;
+                            text: "Precipitation";
+                            clicked => {
+                                show_precipitation = true;
+                            }
+                        }
                     }
                 }
             }
@@ -1022,6 +1082,82 @@ export component MainWindow inherits Window {
         loading: loading;
         error_message: error_message;
         go_back => { show_sounding = false; }
+    }
+
+    if (show_precipitation): PrecipitationPage {
+        // state bindings
+        loading: loading;
+        error_message: error_message;
+
+        base_map_image: precipitation_base_map_image;
+        active_precip_image: precipitation_active_precip_image;
+        legend_image: precipitation_legend_image;
+
+        last_update_text: precipitation_last_update_text;
+        active_model_label: precipitation_active_model_label;
+        active_layer_label: precipitation_active_layer_label;
+        active_time_label: precipitation_active_time_label;
+
+        selected_model_index: precipitation_selected_model_index;
+        selected_layer_index: precipitation_selected_layer_index;
+        selected_time_index: precipitation_selected_time_index;
+
+        show_isobars: precipitation_show_isobars;
+        show_zero_deg_isotherm: precipitation_show_zero_deg_isotherm;
+        show_location_marker: precipitation_show_location_marker;
+
+        prob_rain: precipitation_prob_rain;
+        prob_snow: precipitation_prob_snow;
+        prob_freezing_rain: precipitation_prob_freezing_rain;
+        prob_ice_pellets: precipitation_prob_ice_pellets;
+        prob_any_precip: precipitation_prob_any_precip;
+
+        qpf_6h: precipitation_qpf_6h;
+        qpf_12h: precipitation_qpf_12h;
+        qpf_24h: precipitation_qpf_24h;
+
+        snow_depth: precipitation_snow_depth;
+        air_temp: precipitation_air_temp;
+        dewpoint: precipitation_dewpoint;
+        pressure: precipitation_pressure;
+
+        system_summary: precipitation_system_summary;
+
+        go_back => { show_precipitation = false; }
+
+        model_changed(index) => {
+            // Forward to Rust; Rust will update precipitation_* input properties
+            root.precipitation_model_changed(index);
+        }
+        layer_changed(index) => {
+            root.precipitation_layer_changed(index);
+        }
+        time_changed(index) => {
+            root.precipitation_time_changed(index);
+        }
+        toggle_isobars(active) => {
+            root.precipitation_toggle_isobars(active);
+        }
+        toggle_zero_deg_isotherm(active) => {
+            root.precipitation_toggle_zero_deg_isotherm(active);
+        }
+        toggle_location_marker(active) => {
+            root.precipitation_toggle_location_marker(active);
+        }
+        refresh_now => {
+            root.precipitation_refresh_now();
+        }
+        open_zoom => {
+            // Reuse zoom overlay: set zoomed image and show overlay.
+            // Only use in-out properties; precipitation_* are input-only and must not be assigned here.
+            root.zoomed_image = precipitation_active_precip_image;
+            root.zoomed_title = "Precipitation Overlay";
+            root.has_map = true;
+            root.has_legend = true;
+            root.legend = precipitation_legend_image;
+            root.show_zoomed_image = true;
+            root.image_opacity_reduction = true;
+        }
     }
 
     // Coordinates error popup
@@ -1103,18 +1239,24 @@ export component MainWindow inherits Window {
                 width: 1120px;
                 height: 630px;
 
-                // Map background image
-                if (has_map): Image {
-                    source: map_image;
+                Rectangle {
                     width: 100%;
                     height: 100%;
-                    image-fit: contain;
-                }
-
-                if (has_map): Rectangle {
-                    width: parent.width;
-                    height: parent.height;
-                    background: rgba(0, 0, 0, 0.3);
+                    clip: true;
+                    // Map background image
+                    if (has_map): Image {
+                        source: map_image;
+                        y: -10px;
+                        width: 100%;
+                        height: 100%;
+                        image-fit: contain;
+                    }
+                
+                    if (has_map): Rectangle {
+                        width: parent.width;
+                        height: parent.height;
+                        background: rgba(0, 0, 0, 0.3);
+                    }
                 }
 
                 if (image_opacity_reduction): Image {
@@ -1173,7 +1315,7 @@ export component MainWindow inherits Window {
                         // JavaScript-style background-position calculation: ((x * zoom) - w + bw)
                         // where w = loupe-radius * 2, bw = 2px border
                         x: -((touch_area.mouse-x * root.zoom-factor) - (root.loupe-radius * 2) + root.loupe-radius);
-                        y: -((touch_area.mouse-y * root.zoom-factor) - (root.loupe-radius * 2) + root.loupe-radius);
+                        y: -((touch_area.mouse-y * root.zoom-factor) - (root.loupe-radius * 2) + root.loupe-radius + 20px);
                         // Scale the image for magnification
                         width: touch_area.width * root.zoom-factor;
                         height: touch_area.height * root.zoom-factor;
