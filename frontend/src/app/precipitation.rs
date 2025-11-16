@@ -195,100 +195,30 @@ pub fn setup_precipitation_callbacks(main_window: &MainWindow) {
     let w_refresh = main_window.as_weak();
     main_window.on_precipitation_refresh_now(move || {
         let w = w_refresh.clone();
-        std::thread::spawn(move || {
+        slint::invoke_from_event_loop(move || {
             if let Some(win) = w.upgrade() {
-                if let Ok((lat, lon)) = coordinates::load_coordinates(&win) {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
-                    rt.block_on(async move {
-                        if let Err(e) = refresh_precipitation_data(lat, lon, &win).await {
-                            error!("Precipitation manual refresh failed: {e}");
-                        }
-                    });
+                match coordinates::load_coordinates(&win) {
+                    Ok((lat, lon)) => {
+                        info!("Precipitation refresh: coordinates loaded successfully: lat={}, lon={}", lat, lon);
+                        let rt = tokio::runtime::Runtime::new().unwrap();
+                        rt.block_on(async move {
+                            if let Err(e) = refresh_precipitation_data(lat, lon, &win).await {
+                                error!("Precipitation manual refresh failed: {e}");
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        error!("Precipitation refresh failed: could not load coordinates: {e}");
+                    }
                 }
+            } else {
+                error!("Precipitation refresh failed: window upgrade failed");
             }
-        });
+        }).unwrap();
     });
-
-    info!("Precipitation callbacks set up");
 }
 
 pub async fn fetch_initial_precipitation(lat: f64, lon: f64) -> Result<()> {
-    // On first entry, eagerly fetch all available layers at T+0h for all models:
-    // - Radar: PrecipType, SnowDepth
-    // - HRDPS: all 6 layers (PrecipType, PrecipProb, PrecipAmount, FreezingMixed, SnowDepth, TempPressure)
-    // - RDPS: all 6 layers (PrecipType, PrecipProb, PrecipAmount, FreezingMixed, SnowDepth, TempPressure)
-    // (Further hours remain lazy-loaded via handle_time_change.)
-    let bbox = precipitation_bbox(lat, lon);
-    info!("precipitation: initial load, prefetching all layers at T+0h for bbox={:?}", bbox);
-
-    let api = GeoMetAPI::new()?;
-
-    // 1) Radar layers at T+0
-    match fetch_radar_now(&api, &bbox).await {
-        Ok((rain, snow, when)) => {
-            let mut imgs = PRECIP_IMAGES.lock().unwrap();
-            imgs.insert(
-                (PrecipitationModel::Radar, PrecipitationLayer::RadarRain, 0),
-                rain,
-            );
-            if !snow.is_empty() {
-                imgs.insert(
-                    (PrecipitationModel::Radar, PrecipitationLayer::RadarSnow, 0),
-                    snow,
-                );
-            }
-            {
-                let mut last = LAST_RADAR_FETCH.lock().unwrap();
-                *last = Some(when);
-            }
-            info!(
-                "precipitation: initial radar cached for slot {}",
-                when.to_rfc3339()
-            );
-        }
-        Err(e) => {
-            error!("precipitation: initial radar fetch FAILED: {}", e);
-        }
-    }
-
-    // 2) All HRDPS layers at T+0
-    let hrdps_layers = &[
-        PrecipitationLayer::PrecipType,
-        PrecipitationLayer::PrecipProb,
-        PrecipitationLayer::PrecipAmount,
-        PrecipitationLayer::FreezingMixed,
-        PrecipitationLayer::SnowDepth,
-        PrecipitationLayer::TempPressure,
-    ];
-
-    for layer in hrdps_layers {
-        if let Err(e) = preload_model_core(&api, PrecipitationModel::Hrdps, &bbox, *layer, 0).await {
-            error!(
-                "precipitation: initial HRDPS {:?} T+0h fetch FAILED: {}",
-                layer, e
-            );
-        }
-    }
-
-    // 3) All RDPS layers at T+0
-    let rdps_layers = &[
-        PrecipitationLayer::PrecipType,
-        PrecipitationLayer::PrecipProb,
-        PrecipitationLayer::PrecipAmount,
-        PrecipitationLayer::FreezingMixed,
-        PrecipitationLayer::SnowDepth,
-        PrecipitationLayer::TempPressure,
-    ];
-
-    for layer in rdps_layers {
-        if let Err(e) = preload_model_core(&api, PrecipitationModel::Rdps, &bbox, *layer, 0).await {
-            error!(
-                "precipitation: initial RDPS {:?} T+0h fetch FAILED: {}",
-                layer, e
-            );
-        }
-    }
-
     // Initialize active selection to HRDPS PrecipType T+0h as primary default.
     {
         let mut model = ACTIVE_MODEL.lock().unwrap();
@@ -299,18 +229,13 @@ pub async fn fetch_initial_precipitation(lat: f64, lon: f64) -> Result<()> {
         *hour = 0;
     }
 
-    // Prefetch RDPS PrecipType at T+48h (default for RDPS)
-    if let Err(e) = preload_model_core(&api, PrecipitationModel::Rdps, &bbox, PrecipitationLayer::PrecipType, 48).await {
-        error!("precipitation: initial RDPS PrecipType T+48h fetch FAILED: {}", e);
-    }
-
     // Mark model data timestamp for reference (lazy refresh beyond this remains unchanged).
     {
         let mut last = LAST_MODEL_FETCH.lock().unwrap();
         *last = Some(Utc::now());
     }
 
-    info!("precipitation: initial all layers at T+0h and RDPS T+48h prefetched");
+    info!("precipitation: initial setup completed without prefetching");
     Ok(())
 }
 
@@ -319,6 +244,19 @@ pub async fn refresh_precipitation_data(
     lon: f64,
     main_window: &MainWindow,
 ) -> Result<()> {
+    // Clear all caches for manual refresh
+    {
+        let mut imgs = PRECIP_IMAGES.lock().unwrap();
+        imgs.clear();
+        let mut legends = PRECIP_LEGENDS.lock().unwrap();
+        legends.clear();
+        let mut last_radar = LAST_RADAR_FETCH.lock().unwrap();
+        *last_radar = None;
+        let mut last_model = LAST_MODEL_FETCH.lock().unwrap();
+        *last_model = None;
+    }
+    error!("precipitation: cleared all caches for manual refresh");
+
     let api = GeoMetAPI::new()?;
     let bbox = precipitation_bbox(lat, lon);
     let now = Utc::now();
@@ -342,7 +280,7 @@ pub async fn refresh_precipitation_data(
                         snow_bytes,
                     );
                     *last = Some(radar_time);
-                    info!(
+                    error!(
                         "precipitation: radar refresh ok at {}",
                         radar_time.to_rfc3339()
                     );
@@ -375,6 +313,7 @@ pub async fn refresh_precipitation_data(
     })
     .ok();
 
+    error!("precipitation: manual refresh completed successfully");
     Ok(())
 }
 
@@ -604,35 +543,16 @@ pub fn update_precipitation_display(win: &MainWindow) {
         imgs.len()
     );
 
-    // Fallback order: exact selection -> same model/layer hour 0 -> radar -> any HRDPS
+    // Check if exact selection is available
     let mut chosen_bytes: Option<Vec<u8>> = imgs.get(&(model, layer, hour)).cloned();
 
     if chosen_bytes.is_none() {
-        if let Some(b) = imgs.get(&(model, layer, 0)).cloned() {
-            chosen_bytes = Some(b);
-        }
-    }
-
-    if chosen_bytes.is_none() && model != PrecipitationModel::Radar {
-        if let Some(b) = imgs
-            .get(&(PrecipitationModel::Radar, PrecipitationLayer::RadarRain, 0))
-            .cloned()
-        {
-            chosen_bytes = Some(b);
-        }
-    }
-
-    if chosen_bytes.is_none() {
-        // last resort: any HRDPS PrecipType
-        for h in [0u32, 1, 2, 3, 6, 12, 24, 36, 48] {
-            if let Some(b) = imgs
-                .get(&(PrecipitationModel::Hrdps, PrecipitationLayer::PrecipType, h))
-                .cloned()
-            {
-                chosen_bytes = Some(b);
-                break;
-            }
-        }
+        // Try to fetch the missing image lazily
+        lazy_fetch_missing_image(win, model, layer, hour);
+        // For now, fall back to available images while fetch happens
+        chosen_bytes = find_fallback_image(&imgs, model, layer, hour);
+    } else {
+        chosen_bytes = Some(chosen_bytes.unwrap());
     }
 
     // Legend
@@ -788,6 +708,68 @@ pub fn update_precipitation_display(win: &MainWindow) {
 
     win.set_precipitation_layer_dropdown_items(slint::ModelRc::new(VecModel::from(layer_items)));
     win.set_precipitation_model_dropdown_items(slint::ModelRc::new(VecModel::from(model_items)));
+}
+
+// Lazy fetch missing image
+fn lazy_fetch_missing_image(win: &MainWindow, model: PrecipitationModel, layer: PrecipitationLayer, hour: u32) {
+    info!("precipitation: lazy fetching missing image {:?} {:?} T+{}h", model, layer, hour);
+
+    let bbox = if let Ok((lat, lon)) = coordinates::load_coordinates(win) {
+        precipitation_bbox(lat, lon)
+    } else {
+        precipitation_bbox(45.0, -75.0)
+    };
+
+    let win_weak = win.as_weak();
+
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            if let Ok(api) = GeoMetAPI::new() {
+                if let Err(e) = preload_model_core(&api, model, &bbox, layer, hour).await {
+                    error!(
+                        "precipitation: lazy fetch failed for {:?} {:?} T+{}h: {}",
+                        model, layer, hour, e
+                    );
+                } else {
+                    info!("precipitation: lazy fetch completed for {:?} {:?} T+{}h", model, layer, hour);
+                }
+            } else {
+                error!("precipitation: failed to create GeoMetAPI for lazy fetch");
+            }
+
+            // Update display after fetch attempt
+            slint::invoke_from_event_loop(move || {
+                if let Some(win) = win_weak.upgrade() {
+                    update_precipitation_display(&win);
+                }
+            }).ok();
+        });
+    });
+}
+
+// Find fallback image while lazy fetch happens
+fn find_fallback_image(imgs: &HashMap<ImgKey, Vec<u8>>, model: PrecipitationModel, layer: PrecipitationLayer, hour: u32) -> Option<Vec<u8>> {
+    // Try same model/layer at hour 0
+    if let Some(b) = imgs.get(&(model, layer, 0)) {
+        return Some(b.clone());
+    }
+
+    /*// For non-radar models, try radar rain
+    if model != PrecipitationModel::Radar {
+        if let Some(b) = imgs.get(&(PrecipitationModel::Radar, PrecipitationLayer::RadarRain, 0)) {
+            return Some(b.clone());
+        }
+    }
+
+    // Last resort: any HRDPS PrecipType
+    for h in [0u32, 1, 2, 3, 6, 12, 24, 36, 48] {
+        if let Some(b) = imgs.get(&(PrecipitationModel::Hrdps, PrecipitationLayer::PrecipType, h)) {
+            return Some(b.clone());
+        }
+    }*/
+
+    None
 }
 
 // Callback handlers
