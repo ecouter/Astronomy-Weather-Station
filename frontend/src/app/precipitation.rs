@@ -10,6 +10,9 @@ use crate::app::utils::decode_png_to_slint_image;
 use crate::app::coordinates;
 use crate::MainWindow;
 
+use slint::{Model, VecModel};
+use crate::MenuItem;
+
 use geomet::{BoundingBox, GeoMetAPI};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -20,7 +23,19 @@ pub enum PrecipitationModel {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum PrecipitationCategory {
+    PrecipitationType = 0,
+    PrecipitationProbability = 1,
+    PrecipitationAmount = 2,
+    Temperature = 3,
+    Snow = 4,
+    Visibility = 5,
+    Intensity = 6,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum PrecipitationLayer {
+    // Original layers
     PrecipType = 0,
     PrecipProb = 1,
     PrecipAmount = 2,
@@ -29,6 +44,28 @@ pub enum PrecipitationLayer {
     TempPressure = 5,
     RadarRain = 6,
     RadarSnow = 7,
+    // New layers
+    DominantPrecipType = 8,
+    InstantPrecipType = 9,
+    PrecipCharacter = 10,
+    RainProb = 11,
+    SnowProb = 12,
+    DrizzleProb = 13,
+    FreezingDrizzleProb = 14,
+    FreezingRainProb = 15,
+    IcePelletsProb = 16,
+    LiquidPrecipProb = 17,
+    FreezingPrecipProb = 18,
+    ThunderstormProb = 19,
+    BlowingSnowProb = 20,
+    LiquidPrecipCondAmt = 21,
+    FreezingPrecipCondAmt = 22,
+    IcePelletsCondAmt = 23,
+    AirTemp = 24,
+    DewPointTemp = 25,
+    BlowingSnowPresence = 26,
+    IceFogVisibility = 27,
+    TotalPrecipIntensityIndex = 28,
 }
 
 // Cache keys (model, layer, hour_index)
@@ -41,11 +78,15 @@ static PRECIP_LEGENDS: Lazy<Mutex<HashMap<(PrecipitationModel, PrecipitationLaye
 static PRECIP_POINT_DATA: Lazy<Mutex<PrecipitationPointData>> =
     Lazy::new(|| Mutex::new(PrecipitationPointData::default()));
 
+static ACTIVE_MODE: Lazy<Mutex<u32>> = Lazy::new(|| Mutex::new(1)); // 0 = Radar, 1 = Predictions
 static ACTIVE_MODEL: Lazy<Mutex<PrecipitationModel>> =
     Lazy::new(|| Mutex::new(PrecipitationModel::Hrdps));
 static ACTIVE_LAYER: Lazy<Mutex<PrecipitationLayer>> =
     Lazy::new(|| Mutex::new(PrecipitationLayer::PrecipType));
 static ACTIVE_HOUR: Lazy<Mutex<u32>> = Lazy::new(|| Mutex::new(0));
+static ACTIVE_CATEGORY: Lazy<Mutex<PrecipitationCategory>> =
+    Lazy::new(|| Mutex::new(PrecipitationCategory::PrecipitationType));
+static ACTIVE_SUBLAYER: Lazy<Mutex<u32>> = Lazy::new(|| Mutex::new(0));
 
 static LAST_RADAR_FETCH: Lazy<Mutex<Option<chrono::DateTime<Utc>>>> =
     Lazy::new(|| Mutex::new(None));
@@ -102,6 +143,50 @@ pub fn setup_precipitation_callbacks(main_window: &MainWindow) {
         slint::invoke_from_event_loop(move || {
             if let Some(win) = w.upgrade() {
                 handle_time_change(&win, index);
+            }
+        })
+        .ok();
+    });
+
+    let w_category = main_window.as_weak();
+    main_window.on_precipitation_category_changed(move |index| {
+        let w = w_category.clone();
+        slint::invoke_from_event_loop(move || {
+            if let Some(win) = w.upgrade() {
+                handle_category_change(&win, index);
+            }
+        })
+        .ok();
+    });
+
+    let w_sublayer = main_window.as_weak();
+    main_window.on_precipitation_sublayer_changed(move |index| {
+        let w = w_sublayer.clone();
+        slint::invoke_from_event_loop(move || {
+            if let Some(win) = w.upgrade() {
+                handle_sublayer_change(&win, index);
+            }
+        })
+        .ok();
+    });
+
+    let w_predictions_model = main_window.as_weak();
+    main_window.on_precipitation_predictions_model_changed(move |index| {
+        let w = w_predictions_model.clone();
+        slint::invoke_from_event_loop(move || {
+            if let Some(win) = w.upgrade() {
+                handle_predictions_model_change(&win, index);
+            }
+        })
+        .ok();
+    });
+
+    let w_time_slider = main_window.as_weak();
+    main_window.on_precipitation_time_slider_changed(move |value| {
+        let w = w_time_slider.clone();
+        slint::invoke_from_event_loop(move || {
+            if let Some(win) = w.upgrade() {
+                handle_time_change(&win, value as i32);
             }
         })
         .ok();
@@ -364,41 +449,63 @@ async fn preload_model_core(
     layer: PrecipitationLayer,
     hour: u32,
 ) -> Result<()> {
-    let layer_name = match (model, layer) {
-        (PrecipitationModel::Radar, PrecipitationLayer::RadarRain) => "RADAR_1KM_RRAI",
-        (PrecipitationModel::Radar, PrecipitationLayer::RadarSnow) => "RADAR_1KM_RSNO",
-        (PrecipitationModel::Hrdps, PrecipitationLayer::PrecipType) => {
-            "HRDPS-WEonG_2.5km_DominantPrecipType"
-        }
-        (PrecipitationModel::Hrdps, PrecipitationLayer::PrecipProb) => {
-            "HRDPS-WEonG_2.5km_Precip-Prob"
-        }
-        (PrecipitationModel::Hrdps, PrecipitationLayer::PrecipAmount) => {
-            "HRDPS-WEonG_2.5km_PrecipCondAmt"
-        }
-        (PrecipitationModel::Hrdps, PrecipitationLayer::TempPressure) => {
-            "HRDPS-WEonG_2.5km_AirTemp"
-        }
-        (PrecipitationModel::Hrdps, PrecipitationLayer::FreezingMixed) => {
-            "HRDPS-WEonG_2.5km_FreezingPrecip-Prob"
-        }
-        (PrecipitationModel::Hrdps, PrecipitationLayer::SnowDepth) => "HRDPS.CONTINENTAL_SD",
-        (PrecipitationModel::Rdps, PrecipitationLayer::SnowDepth) => "RDPS.ETA_SD",
-        (PrecipitationModel::Rdps, PrecipitationLayer::PrecipType) => {
-            "RDPS-WEonG_10km_DominantPrecipType"
-        }
-        (PrecipitationModel::Rdps, PrecipitationLayer::PrecipProb) => {
-            "RDPS-WEonG_10km_Precip-Prob"
-        }
-        (PrecipitationModel::Rdps, PrecipitationLayer::PrecipAmount) => {
-            "RDPS-WEonG_10km_PrecipCondAmt"
-        }
-        (PrecipitationModel::Rdps, PrecipitationLayer::TempPressure) => {
-            "RDPS-WEonG_10km_AirTemp"
-        }
-        (PrecipitationModel::Rdps, PrecipitationLayer::FreezingMixed) => {
-            "RDPS-WEonG_10km_FreezingPrecip-Prob"
-        }
+    let (layer_name, style) = match (model, layer) {
+        (PrecipitationModel::Radar, PrecipitationLayer::RadarRain) => ("RADAR_1KM_RRAI", Some("Radar-Rain")),
+        (PrecipitationModel::Radar, PrecipitationLayer::RadarSnow) => ("RADAR_1KM_RSNO", Some("Radar-Snow")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::PrecipType) => ("HRDPS-WEonG_2.5km_DominantPrecipType", None),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::PrecipProb) => ("HRDPS-WEonG_2.5km_Precip-Prob", None),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::PrecipAmount) => ("HRDPS-WEonG_2.5km_PrecipCondAmt", None),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::TempPressure) => ("HRDPS-WEonG_2.5km_AirTemp", Some("TEMPERATURE-LINEAR")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::FreezingMixed) => ("HRDPS-WEonG_2.5km_FreezingPrecip-Prob", None),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::SnowDepth) => ("HRDPS.CONTINENTAL_SD", Some("SNOWDEPTH-LINEAR")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::DominantPrecipType) => ("HRDPS-WEonG_2.5km_DominantPrecipType", Some("DominantPrecipType_Dis")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::InstantPrecipType) => ("HRDPS-WEonG_2.5km_InstantPrecipType", Some("INSTPRECIPITATIONTYPE")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::PrecipCharacter) => ("HRDPS-WEonG_2.5km_PrecipCharacter", Some("PrecipCharacter_Dis")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::RainProb) => ("HRDPS-WEonG_2.5km_Rain-Prob", Some("Rain-Prob")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::SnowProb) => ("HRDPS-WEonG_2.5km_Snow-Prob", Some("Snow-Prob")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::DrizzleProb) => ("HRDPS-WEonG_2.5km_Drizzle-Prob", Some("Drizzle-Prob")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::FreezingDrizzleProb) => ("HRDPS-WEonG_2.5km_FreezingDrizzle-Prob", Some("FreezingDrizzle-Prob")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::FreezingRainProb) => ("HRDPS-WEonG_2.5km_FreezingRain-Prob", Some("FreezingRain-Prob")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::IcePelletsProb) => ("HRDPS-WEonG_2.5km_IcePellets-Prob", Some("IcePellets-Prob")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::LiquidPrecipProb) => ("HRDPS-WEonG_2.5km_LiquidPrecip-Prob", Some("LiquidPrecip-Prob")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::FreezingPrecipProb) => ("HRDPS-WEonG_2.5km_FreezingPrecip-Prob", Some("FreezingPrecip-Prob")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::ThunderstormProb) => ("HRDPS-WEonG_2.5km_Thunderstorm-Prob", Some("Thunderstorm-Prob")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::BlowingSnowProb) => ("HRDPS-WEonG_2.5km_BlowingSnow-Prob", Some("BlowingSnow-Prob")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::LiquidPrecipCondAmt) => ("HRDPS-WEonG_2.5km_LiquidPrecipCondAmt", Some("LiquidPrecipCondAmt")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::FreezingPrecipCondAmt) => ("HRDPS-WEonG_2.5km_FreezingPrecipCondAmt", Some("FreezingPrecipCondAmt")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::IcePelletsCondAmt) => ("HRDPS-WEonG_2.5km_IcePelletsCondAmt", Some("IcePelletsCondAmt")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::AirTemp) => ("HRDPS-WEonG_2.5km_AirTemp", Some("TEMPERATURE-LINEAR")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::DewPointTemp) => ("HRDPS-WEonG_2.5km_DewPointTemp", Some("DEWPOINT")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::BlowingSnowPresence) => ("HRDPS-WEonG_2.5km_BlowingSnowPresence", Some("BlowingSnowPresence_Dis")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::IceFogVisibility) => ("HRDPS-WEonG_2.5km_IceFogVisibility", Some("IceFogVisibility_Dis")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::TotalPrecipIntensityIndex) => ("HRDPS-WEonG_2.5km_TotalPrecipIntensityIndex", Some("TotalPrecipIntensityIndex_Dis")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::PrecipType) => ("RDPS-WEonG_10km_DominantPrecipType", None),
+        (PrecipitationModel::Rdps, PrecipitationLayer::PrecipProb) => ("RDPS-WEonG_10km_Precip-Prob", None),
+        (PrecipitationModel::Rdps, PrecipitationLayer::PrecipAmount) => ("RDPS-WEonG_10km_PrecipCondAmt", None),
+        (PrecipitationModel::Rdps, PrecipitationLayer::TempPressure) => ("RDPS-WEonG_10km_AirTemp", Some("TEMPERATURE-LINEAR")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::FreezingMixed) => ("RDPS-WEonG_10km_FreezingPrecip-Prob", None),
+        (PrecipitationModel::Rdps, PrecipitationLayer::SnowDepth) => ("RDPS.ETA_SD", Some("SNOWDEPTH-LINEAR")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::DominantPrecipType) => ("RDPS-WEonG_10km_DominantPrecipType", Some("DominantPrecipType_Dis")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::InstantPrecipType) => ("RDPS-WEonG_10km_InstantPrecipType", Some("INSTPRECIPITATIONTYPE")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::PrecipCharacter) => ("RDPS-WEonG_10km_PrecipCharacter", Some("PrecipCharacter_Dis")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::RainProb) => ("RDPS-WEonG_10km_Rain-Prob", Some("Rain-Prob")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::SnowProb) => ("RDPS-WEonG_10km_Snow-Prob", Some("Snow-Prob")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::DrizzleProb) => ("RDPS-WEonG_10km_Drizzle-Prob", Some("Drizzle-Prob")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::FreezingDrizzleProb) => ("RDPS-WEonG_10km_FreezingDrizzle-Prob", Some("FreezingDrizzle-Prob")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::FreezingRainProb) => ("RDPS-WEonG_10km_FreezingRain-Prob", Some("FreezingRain-Prob")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::IcePelletsProb) => ("RDPS-WEonG_10km_IcePellets-Prob", Some("IcePellets-Prob")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::LiquidPrecipProb) => ("RDPS-WEonG_10km_LiquidPrecip-Prob", Some("LiquidPrecip-Prob")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::FreezingPrecipProb) => ("RDPS-WEonG_10km_FreezingPrecip-Prob", Some("FreezingPrecip-Prob")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::ThunderstormProb) => ("RDPS-WEonG_10km_Thunderstorm-Prob", Some("Thunderstorm-Prob")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::BlowingSnowProb) => ("RDPS-WEonG_10km_BlowingSnow-Prob", Some("BlowingSnow-Prob")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::LiquidPrecipCondAmt) => ("RDPS-WEonG_10km_LiquidPrecipCondAmt", Some("LiquidPrecipCondAmt")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::FreezingPrecipCondAmt) => ("RDPS-WEonG_10km_FreezingPrecipCondAmt", Some("FreezingPrecipCondAmt")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::IcePelletsCondAmt) => ("RDPS-WEonG_10km_IcePelletsCondAmt", Some("IcePelletsCondAmt")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::AirTemp) => ("RDPS-WEonG_10km_AirTemp", Some("TEMPERATURE-LINEAR")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::DewPointTemp) => ("RDPS-WEonG_10km_DewPointTemp", Some("DEWPOINT")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::BlowingSnowPresence) => ("RDPS-WEonG_10km_BlowingSnowPresence", Some("BlowingSnowPresence_Dis")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::IceFogVisibility) => ("RDPS-WEonG_10km_IceFogVisibility", Some("IceFogVisibility_Dis")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::TotalPrecipIntensityIndex) => ("RDPS-WEonG_10km_TotalPrecipIntensityIndex", Some("TotalPrecipIntensityIndex_Dis")),
         // For unsupported (model, layer) combinations we do nothing.
         _ => return Ok(()),
     };
@@ -410,7 +517,7 @@ async fn preload_model_core(
     let legend_key = (model, layer);
     if !legends.contains_key(&legend_key) {
         if let Ok(lg) = api
-            .get_legend_graphic(layer_name, None, "image/png", None)
+            .get_legend_graphic(layer_name, style, "image/png", None)
             .await
         {
             info!(
@@ -449,18 +556,6 @@ async fn preload_model_core(
         "precipitation: fetching {:?} {:?} T+{}h ({}) for bbox={:?}",
         model, layer, hour, time_str, bbox
     );
-
-    // Use appropriate style for radar layers
-    let style = match model {
-        PrecipitationModel::Radar => {
-            match layer {
-                PrecipitationLayer::RadarRain => Some("Radar-Rain"),
-                PrecipitationLayer::RadarSnow => Some("Radar-Snow"),
-                _ => None,
-            }
-        }
-        _ => None,
-    };
 
     let image_result = if let Some(style_name) = style {
         api.get_wms_image_with_style(layer_name, &time_str, bbox.clone(), 1280, 720, Some(style_name)).await
@@ -582,10 +677,13 @@ pub fn update_precipitation_display(win: &MainWindow) {
     };
 
     // Decode active precipitation image using existing util (PNG -> slint::Image)
-    let active_img = chosen_bytes
-        .as_ref()
-        .and_then(|b| decode_image_safe(b, "active"))
-        .unwrap_or_default();
+    let (active_img, has_error) = match chosen_bytes.as_ref() {
+        Some(bytes) => match decode_image_safe(bytes, "active") {
+            Some(img) => (img, false),
+            None => (slint::Image::default(), true),
+        },
+        None => (slint::Image::default(), false),
+    };
 
     let legend_img = legend_bytes
         .as_ref()
@@ -596,6 +694,7 @@ pub fn update_precipitation_display(win: &MainWindow) {
     win.set_precipitation_base_map_image(base_map_img);
     win.set_precipitation_active_precip_image(active_img);
     win.set_precipitation_legend_image(legend_img);
+    win.set_precipitation_active_image_error(has_error);
 
     // Labels
     let model_label = match model {
@@ -612,17 +711,58 @@ pub fn update_precipitation_display(win: &MainWindow) {
         PrecipitationLayer::TempPressure => "Temp & Pressure",
         PrecipitationLayer::RadarRain => "Radar Rain",
         PrecipitationLayer::RadarSnow => "Radar Snow",
+        PrecipitationLayer::DominantPrecipType => "Dominant Precip Type",
+        PrecipitationLayer::InstantPrecipType => "Instant Precip Type",
+        PrecipitationLayer::PrecipCharacter => "Precip Character",
+        PrecipitationLayer::RainProb => "Rain Prob",
+        PrecipitationLayer::SnowProb => "Snow Prob",
+        PrecipitationLayer::DrizzleProb => "Drizzle Prob",
+        PrecipitationLayer::FreezingDrizzleProb => "Freezing Drizzle Prob",
+        PrecipitationLayer::FreezingRainProb => "Freezing Rain Prob",
+        PrecipitationLayer::IcePelletsProb => "Ice Pellets Prob",
+        PrecipitationLayer::LiquidPrecipProb => "Liquid Precip Prob",
+        PrecipitationLayer::FreezingPrecipProb => "Freezing Precip Prob",
+        PrecipitationLayer::ThunderstormProb => "Thunderstorm Prob",
+        PrecipitationLayer::BlowingSnowProb => "Blowing Snow Prob",
+        PrecipitationLayer::LiquidPrecipCondAmt => "Liquid Precip Amount",
+        PrecipitationLayer::FreezingPrecipCondAmt => "Freezing Precip Amount",
+        PrecipitationLayer::IcePelletsCondAmt => "Ice Pellets Amount",
+        PrecipitationLayer::AirTemp => "Air Temperature",
+        PrecipitationLayer::DewPointTemp => "Dew Point Temp",
+        PrecipitationLayer::BlowingSnowPresence => "Blowing Snow Presence",
+        PrecipitationLayer::IceFogVisibility => "Ice Fog Visibility",
+        PrecipitationLayer::TotalPrecipIntensityIndex => "Precip Intensity Index",
     };
     let time_label = if model == PrecipitationModel::Radar {
-        "Now".to_string()
+        "NOW".to_string()
     } else {
-        format!("T+{}h", hour)
+        format!("+{}h", hour)
     };
 
     win.set_precipitation_active_model_label(model_label.into());
     win.set_precipitation_active_layer_label(layer_label.into());
     win.set_precipitation_active_time_label(time_label.into());
     win.set_precipitation_last_update_text("".into()); // can be filled from LAST_* timestamps
+
+    // Set slider properties
+    let (slider_min, slider_max) = match model {
+        PrecipitationModel::Radar => (0.0, 0.0),
+        PrecipitationModel::Hrdps => (0.0, 48.0),
+        PrecipitationModel::Rdps => (0.0, 80.0),
+    };
+    win.set_precipitation_time_slider_value(hour as f32);
+    win.set_precipitation_time_slider_min(slider_min);
+    win.set_precipitation_time_slider_max(slider_max);
+
+    // Update selected indices
+    let mode = *ACTIVE_MODE.lock().unwrap();
+    win.set_precipitation_selected_mode_index(mode as i32);
+    win.set_precipitation_selected_model_index(if model == PrecipitationModel::Hrdps { 0 } else { 1 });
+    win.set_precipitation_selected_layer_index(layer as i32);
+    win.set_precipitation_selected_time_index(hour as i32);
+    win.set_precipitation_selected_category_index(*ACTIVE_CATEGORY.lock().unwrap() as i32);
+    win.set_precipitation_selected_sublayer_index(*ACTIVE_SUBLAYER.lock().unwrap() as i32);
+    win.set_precipitation_selected_predictions_model_index(if model == PrecipitationModel::Hrdps { 0 } else { 1 });
 
     // Metrics
     win.set_precipitation_prob_rain(point.prob_rain);
@@ -640,16 +780,31 @@ pub fn update_precipitation_display(win: &MainWindow) {
     win.set_precipitation_dewpoint(point.dewpoint);
     win.set_precipitation_pressure(point.pressure);
     win.set_precipitation_system_summary(point.system_summary.into());
+
+    // Update dropdown items
+    let category = *ACTIVE_CATEGORY.lock().unwrap();
+    let layer_items = generate_layer_dropdown_items(category);
+    let model_items = generate_model_dropdown_items();
+
+    win.set_precipitation_layer_dropdown_items(slint::ModelRc::new(VecModel::from(layer_items)));
+    win.set_precipitation_model_dropdown_items(slint::ModelRc::new(VecModel::from(model_items)));
 }
 
 // Callback handlers
 
 fn handle_model_change(win: &MainWindow, index: i32) {
-    let model = match index {
-        0 => PrecipitationModel::Radar,
-        1 => PrecipitationModel::Hrdps,
-        2 => PrecipitationModel::Rdps,
-        _ => PrecipitationModel::Hrdps,
+    let mode = index as u32;
+    *ACTIVE_MODE.lock().unwrap() = mode;
+
+    let model = if mode == 0 {
+        PrecipitationModel::Radar
+    } else {
+        let current = *ACTIVE_MODEL.lock().unwrap();
+        if matches!(current, PrecipitationModel::Radar) {
+            PrecipitationModel::Hrdps // Default to HRDPS when entering predictions mode
+        } else {
+            current
+        }
     };
 
     *ACTIVE_MODEL.lock().unwrap() = model;
@@ -663,7 +818,7 @@ fn handle_model_change(win: &MainWindow, index: i32) {
 
     *ACTIVE_HOUR.lock().unwrap() = default_hour;
 
-    win.set_precipitation_selected_model_index(index);
+    win.set_precipitation_selected_mode_index(index);
     win.set_precipitation_selected_time_index(default_hour as i32);
 
     if model == PrecipitationModel::Radar {
@@ -674,7 +829,7 @@ fn handle_model_change(win: &MainWindow, index: i32) {
         win.set_precipitation_selected_layer_index(0);
     }
 
-    info!("precipitation: model changed to {:?}, hour reset to 0", model);
+    info!("precipitation: mode changed to {}, model={:?}, hour reset to {}", mode, model, default_hour);
 
     if model == PrecipitationModel::Radar {
         // For Radar: fetch latest composites immediately and update UI when ready.
@@ -827,4 +982,260 @@ fn handle_time_change(win: &MainWindow, index: i32) {
             .ok();
         });
     });
+}
+
+fn handle_category_change(win: &MainWindow, index: i32) {
+    let category = match index {
+        0 => PrecipitationCategory::PrecipitationType,
+        1 => PrecipitationCategory::PrecipitationProbability,
+        2 => PrecipitationCategory::PrecipitationAmount,
+        3 => PrecipitationCategory::Temperature,
+        4 => PrecipitationCategory::Snow,
+        5 => PrecipitationCategory::Visibility,
+        6 => PrecipitationCategory::Intensity,
+        _ => PrecipitationCategory::PrecipitationType,
+    };
+    *ACTIVE_CATEGORY.lock().unwrap() = category;
+    // Reset sublayer to 0
+    *ACTIVE_SUBLAYER.lock().unwrap() = 0;
+    // Update layer based on category and sublayer
+    update_active_layer_from_category_and_sublayer(win);
+    win.set_precipitation_selected_category_index(index);
+    win.set_precipitation_selected_sublayer_index(0);
+    info!("precipitation: category changed to {:?}", category);
+    update_precipitation_display(win);
+}
+
+fn handle_sublayer_change(win: &MainWindow, index: i32) {
+    *ACTIVE_SUBLAYER.lock().unwrap() = index as u32;
+    // Update layer based on category and sublayer
+    update_active_layer_from_category_and_sublayer(win);
+    win.set_precipitation_selected_sublayer_index(index);
+    info!("precipitation: sublayer changed to {}", index);
+    update_precipitation_display(win);
+}
+
+fn handle_predictions_model_change(win: &MainWindow, index: i32) {
+    let model = match index {
+        0 => PrecipitationModel::Hrdps,
+        1 => PrecipitationModel::Rdps,
+        _ => PrecipitationModel::Hrdps,
+    };
+    *ACTIVE_MODEL.lock().unwrap() = model;
+    win.set_precipitation_selected_predictions_model_index(index);
+    info!("precipitation: predictions model changed to {:?}", model);
+    update_precipitation_display(win);
+}
+
+fn update_active_layer_from_category_and_sublayer(win: &MainWindow) {
+    let category = *ACTIVE_CATEGORY.lock().unwrap();
+    let sublayer = *ACTIVE_SUBLAYER.lock().unwrap();
+    let layer = match (category, sublayer) {
+        (PrecipitationCategory::PrecipitationType, 0) => PrecipitationLayer::DominantPrecipType,
+        (PrecipitationCategory::PrecipitationType, 1) => PrecipitationLayer::InstantPrecipType,
+        (PrecipitationCategory::PrecipitationType, 2) => PrecipitationLayer::PrecipCharacter,
+        (PrecipitationCategory::PrecipitationProbability, 0) => PrecipitationLayer::PrecipProb,
+        (PrecipitationCategory::PrecipitationProbability, 1) => PrecipitationLayer::RainProb,
+        (PrecipitationCategory::PrecipitationProbability, 2) => PrecipitationLayer::SnowProb,
+        (PrecipitationCategory::PrecipitationProbability, 3) => PrecipitationLayer::DrizzleProb,
+        (PrecipitationCategory::PrecipitationProbability, 4) => PrecipitationLayer::FreezingDrizzleProb,
+        (PrecipitationCategory::PrecipitationProbability, 5) => PrecipitationLayer::FreezingRainProb,
+        (PrecipitationCategory::PrecipitationProbability, 6) => PrecipitationLayer::IcePelletsProb,
+        (PrecipitationCategory::PrecipitationProbability, 7) => PrecipitationLayer::LiquidPrecipProb,
+        (PrecipitationCategory::PrecipitationProbability, 8) => PrecipitationLayer::FreezingPrecipProb,
+        (PrecipitationCategory::PrecipitationProbability, 9) => PrecipitationLayer::ThunderstormProb,
+        (PrecipitationCategory::PrecipitationProbability, 10) => PrecipitationLayer::BlowingSnowProb,
+        (PrecipitationCategory::PrecipitationAmount, 0) => PrecipitationLayer::PrecipAmount,
+        (PrecipitationCategory::PrecipitationAmount, 1) => PrecipitationLayer::LiquidPrecipCondAmt,
+        (PrecipitationCategory::PrecipitationAmount, 2) => PrecipitationLayer::FreezingPrecipCondAmt,
+        (PrecipitationCategory::PrecipitationAmount, 3) => PrecipitationLayer::IcePelletsCondAmt,
+        (PrecipitationCategory::Temperature, 0) => PrecipitationLayer::AirTemp,
+        (PrecipitationCategory::Temperature, 1) => PrecipitationLayer::DewPointTemp,
+        (PrecipitationCategory::Snow, 0) => PrecipitationLayer::SnowDepth,
+        (PrecipitationCategory::Snow, 1) => PrecipitationLayer::BlowingSnowPresence,
+        (PrecipitationCategory::Visibility, 0) => PrecipitationLayer::IceFogVisibility,
+        (PrecipitationCategory::Intensity, 0) => PrecipitationLayer::TotalPrecipIntensityIndex,
+        _ => PrecipitationLayer::PrecipType,
+    };
+    *ACTIVE_LAYER.lock().unwrap() = layer;
+}
+
+fn generate_layer_dropdown_items(category: PrecipitationCategory) -> Vec<MenuItem> {
+    match category {
+        PrecipitationCategory::PrecipitationType => vec![
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Dominant Precip Type".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Instant Precip Type".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Precip Character".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+        ],
+        PrecipitationCategory::PrecipitationProbability => vec![
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Any Precip Prob".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Rain Prob".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Snow Prob".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Drizzle Prob".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Freezing Drizzle Prob".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Freezing Rain Prob".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Ice Pellets Prob".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Liquid Precip Prob".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Freezing Precip Prob".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Thunderstorm Prob".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Blowing Snow Prob".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+        ],
+        PrecipitationCategory::PrecipitationAmount => vec![
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Total Precip Amount".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Liquid Precip Amount".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Freezing Precip Amount".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Ice Pellets Amount".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+        ],
+        PrecipitationCategory::Temperature => vec![
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Air Temperature".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Dew Point Temperature".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+        ],
+        PrecipitationCategory::Snow => vec![
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Snow Depth".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Blowing Snow Presence".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+        ],
+        PrecipitationCategory::Visibility => vec![
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Ice Fog Visibility".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+        ],
+        PrecipitationCategory::Intensity => vec![
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Precip Intensity Index".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            },
+        ],
+    }
+}
+
+fn generate_model_dropdown_items() -> Vec<MenuItem> {
+    vec![
+        MenuItem {
+            icon: slint::Image::default(),
+            text: "HRDPS (2.5km)".into(),
+            trailing_text: "".into(),
+            enabled: true,
+        },
+        MenuItem {
+            icon: slint::Image::default(),
+            text: "RDPS (10km)".into(),
+            trailing_text: "".into(),
+            enabled: true,
+        },
+    ]
 }

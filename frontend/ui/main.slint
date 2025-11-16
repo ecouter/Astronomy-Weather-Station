@@ -4,6 +4,7 @@ import { NinaPage } from "nina.slint";
 import { SoundingPage } from "sounding.slint";
 import { PrecipitationPage } from "precipitation.slint";
 import { IconButton } from "../../material-1.0/ui/components/icon_button.slint";
+import { MenuItem } from "../../material-1.0/ui/items/menu_item.slint";
 import { Icons } from "../../material-1.0/ui/icons/icons.slint";
 
 export component MainWindow inherits Window {
@@ -117,18 +118,23 @@ export component MainWindow inherits Window {
     in property <image> precipitation_active_precip_image;
     in property <image> precipitation_legend_image;
 
+    in property <bool> precipitation_active_image_error;
+
     in property <string> precipitation_last_update_text;
     in property <string> precipitation_active_model_label;
     in property <string> precipitation_active_layer_label;
     in property <string> precipitation_active_time_label;
 
+    in property <int> precipitation_selected_mode_index;
     in property <int> precipitation_selected_model_index;
     in property <int> precipitation_selected_layer_index;
     in property <int> precipitation_selected_time_index;
+    in property <int> precipitation_selected_category_index;
+    in property <int> precipitation_selected_sublayer_index;
+    in property <int> precipitation_selected_predictions_model_index;
 
-    in property <bool> precipitation_show_isobars;
-    in property <bool> precipitation_show_zero_deg_isotherm;
-    in property <bool> precipitation_show_location_marker;
+    in property <[MenuItem]> precipitation_layer_dropdown_items;
+    in property <[MenuItem]> precipitation_model_dropdown_items;
 
     in property <int> precipitation_prob_rain;
     in property <int> precipitation_prob_snow;
@@ -146,6 +152,11 @@ export component MainWindow inherits Window {
     in property <float> precipitation_pressure;
 
     in property <string> precipitation_system_summary;
+
+    in property <float> precipitation_time_slider_value;
+    in property <float> precipitation_time_slider_min;
+    in property <float> precipitation_time_slider_max;
+
     in-out property <string> nina_url_change: "";
     in-out property <int> nina_url_index: -1;
     in-out property <bool> nina_force_update: false;
@@ -183,10 +194,11 @@ export component MainWindow inherits Window {
     callback precipitation_model_changed(int);
     callback precipitation_layer_changed(int);
     callback precipitation_time_changed(int);
+    callback precipitation_category_changed(int);
+    callback precipitation_sublayer_changed(int);
+    callback precipitation_predictions_model_changed(int);
+    callback precipitation_time_slider_changed(float);
     callback precipitation_refresh_now();
-    callback precipitation_toggle_isobars(bool);
-    callback precipitation_toggle_zero_deg_isotherm(bool);
-    callback precipitation_toggle_location_marker(bool);
 
     if (!show_env_canada): HorizontalBox {
         // Left side: Cloud cover prediction (top portion, 1/3 width)
@@ -1093,18 +1105,23 @@ export component MainWindow inherits Window {
         active_precip_image: precipitation_active_precip_image;
         legend_image: precipitation_legend_image;
 
+        active_image_error: precipitation_active_image_error;
+
         last_update_text: precipitation_last_update_text;
         active_model_label: precipitation_active_model_label;
         active_layer_label: precipitation_active_layer_label;
         active_time_label: precipitation_active_time_label;
 
+        selected_mode_index: precipitation_selected_mode_index;
         selected_model_index: precipitation_selected_model_index;
         selected_layer_index: precipitation_selected_layer_index;
         selected_time_index: precipitation_selected_time_index;
+        selected_category_index: precipitation_selected_category_index;
+        selected_sublayer_index: precipitation_selected_sublayer_index;
+        selected_predictions_model_index: precipitation_selected_predictions_model_index;
 
-        show_isobars: precipitation_show_isobars;
-        show_zero_deg_isotherm: precipitation_show_zero_deg_isotherm;
-        show_location_marker: precipitation_show_location_marker;
+        layer_dropdown_items: precipitation_layer_dropdown_items;
+        model_dropdown_items: precipitation_model_dropdown_items;
 
         prob_rain: precipitation_prob_rain;
         prob_snow: precipitation_prob_snow;
@@ -1123,6 +1140,10 @@ export component MainWindow inherits Window {
 
         system_summary: precipitation_system_summary;
 
+        time_slider_value: precipitation_time_slider_value;
+        time_slider_min: precipitation_time_slider_min;
+        time_slider_max: precipitation_time_slider_max;
+
         go_back => { show_precipitation = false; }
 
         model_changed(index) => {
@@ -1135,14 +1156,17 @@ export component MainWindow inherits Window {
         time_changed(index) => {
             root.precipitation_time_changed(index);
         }
-        toggle_isobars(active) => {
-            root.precipitation_toggle_isobars(active);
+        category_changed(index) => {
+            root.precipitation_category_changed(index);
         }
-        toggle_zero_deg_isotherm(active) => {
-            root.precipitation_toggle_zero_deg_isotherm(active);
+        sublayer_changed(index) => {
+            root.precipitation_sublayer_changed(index);
         }
-        toggle_location_marker(active) => {
-            root.precipitation_toggle_location_marker(active);
+        predictions_model_changed(index) => {
+            root.precipitation_predictions_model_changed(index);
+        }
+        time_slider_changed(value) => {
+            root.precipitation_time_slider_changed(value);
         }
         refresh_now => {
             root.precipitation_refresh_now();
