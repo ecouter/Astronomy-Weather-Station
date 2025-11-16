@@ -157,6 +157,9 @@ export component MainWindow inherits Window {
     in property <float> precipitation_time_slider_min;
     in property <float> precipitation_time_slider_max;
 
+    in property <string> precipitation_load_all_hours_button_text;
+    in property <bool> precipitation_load_all_hours_button_enabled;
+
     in-out property <string> nina_url_change: "";
     in-out property <int> nina_url_index: -1;
     in-out property <bool> nina_force_update: false;
@@ -199,6 +202,7 @@ export component MainWindow inherits Window {
     callback precipitation_predictions_model_changed(int);
     callback precipitation_time_slider_changed(float);
     callback precipitation_refresh_now();
+    callback precipitation_load_all_hours();
 
     if (!show_env_canada): HorizontalBox {
         // Left side: Cloud cover prediction (top portion, 1/3 width)
@@ -1144,6 +1148,9 @@ export component MainWindow inherits Window {
         time_slider_min: precipitation_time_slider_min;
         time_slider_max: precipitation_time_slider_max;
 
+        load_all_hours_button_text: precipitation_load_all_hours_button_text;
+        load_all_hours_button_enabled: precipitation_load_all_hours_button_enabled;
+
         go_back => { show_precipitation = false; }
 
         model_changed(index) => {
@@ -1170,6 +1177,9 @@ export component MainWindow inherits Window {
         }
         refresh_now => {
             root.precipitation_refresh_now();
+        }
+        load_all_hours => {
+            root.precipitation_load_all_hours();
         }
         open_zoom => {
             // Reuse zoom overlay: set zoomed image and show overlay.

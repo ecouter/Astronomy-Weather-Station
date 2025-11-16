@@ -53,6 +53,9 @@ export component PrecipitationPage inherits Rectangle {
     in property <float> time_slider_min;
     in property <float> time_slider_max;
 
+    in property <string> load_all_hours_button_text;
+    in property <bool> load_all_hours_button_enabled;
+
     // Callbacks to Rust
     callback go_back();
     callback model_changed(int);
@@ -63,6 +66,7 @@ export component PrecipitationPage inherits Rectangle {
     callback predictions_model_changed(int);
     callback time_slider_changed(float);
     callback refresh_now();
+    callback load_all_hours();
     callback open_zoom();
 
     // Styling
@@ -118,6 +122,12 @@ export component PrecipitationPage inherits Rectangle {
             Button {
                 text: "Refresh";
                 clicked => { refresh_now(); }
+            }
+
+            Button {
+                text: load_all_hours_button_text;
+                enabled: load_all_hours_button_enabled;
+                clicked => { load_all_hours(); }
             }
 
             Button {

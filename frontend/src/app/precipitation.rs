@@ -216,6 +216,17 @@ pub fn setup_precipitation_callbacks(main_window: &MainWindow) {
             }
         }).unwrap();
     });
+
+    let w_load_all = main_window.as_weak();
+    main_window.on_precipitation_load_all_hours(move || {
+        let w = w_load_all.clone();
+        slint::invoke_from_event_loop(move || {
+            if let Some(win) = w.upgrade() {
+                handle_load_all_hours(&win);
+            }
+        })
+        .ok();
+    });
 }
 
 pub async fn fetch_initial_precipitation(lat: f64, lon: f64) -> Result<()> {
@@ -708,6 +719,10 @@ pub fn update_precipitation_display(win: &MainWindow) {
 
     win.set_precipitation_layer_dropdown_items(slint::ModelRc::new(VecModel::from(layer_items)));
     win.set_precipitation_model_dropdown_items(slint::ModelRc::new(VecModel::from(model_items)));
+
+    // Set load all hours button initial state
+    win.set_precipitation_load_all_hours_button_text("Load all hours".into());
+    win.set_precipitation_load_all_hours_button_enabled(model != PrecipitationModel::Radar);
 }
 
 // Lazy fetch missing image
@@ -1007,6 +1022,79 @@ fn handle_predictions_model_change(win: &MainWindow, index: i32) {
     win.set_precipitation_selected_predictions_model_index(index);
     info!("precipitation: predictions model changed to {:?}", model);
     update_precipitation_display(win);
+}
+
+fn handle_load_all_hours(win: &MainWindow) {
+    let model = *ACTIVE_MODEL.lock().unwrap();
+    let layer = *ACTIVE_LAYER.lock().unwrap();
+
+    // Disable button and change text to indicate loading
+    win.set_precipitation_load_all_hours_button_text("Loading all hours...".into());
+    win.set_precipitation_load_all_hours_button_enabled(false);
+
+    if model == PrecipitationModel::Radar {
+        // For radar, only one hour, so just mark as done
+        win.set_precipitation_load_all_hours_button_text("all hours fetched".into());
+        return;
+    }
+
+    let max_hours = match model {
+        PrecipitationModel::Hrdps => 48,
+        PrecipitationModel::Rdps => 80,
+        PrecipitationModel::Radar => 0, // shouldn't reach here
+    };
+
+    let bbox = if let Ok((lat, lon)) = coordinates::load_coordinates(win) {
+        precipitation_bbox(lat, lon)
+    } else {
+        precipitation_bbox(45.0, -75.0)
+    };
+
+    let win_weak = win.as_weak();
+
+    std::thread::spawn(move || {
+        let mut handles = Vec::new();
+
+        for hour in 0..=max_hours {
+            let bbox_clone = bbox.clone();
+            let handle = std::thread::spawn(move || {
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                rt.block_on(async move {
+                    if let Ok(api) = GeoMetAPI::new() {
+                        if let Err(e) = preload_model_core(&api, model, &bbox_clone, layer, hour).await {
+                            error!(
+                                "precipitation: failed to load {:?} {:?} T+{}h: {}",
+                                model, layer, hour, e
+                            );
+                        } else {
+                            info!("precipitation: loaded {:?} {:?} T+{}h", model, layer, hour);
+                        }
+                    } else {
+                        error!("precipitation: failed to create GeoMetAPI for hour {}", hour);
+                    }
+                });
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all threads to complete
+        for handle in handles {
+            if let Err(e) = handle.join() {
+                error!("precipitation: thread join failed: {:?}", e);
+            }
+        }
+
+        info!("precipitation: all hours loaded for {:?} {:?}", model, layer);
+
+        // Update UI after completion
+        slint::invoke_from_event_loop(move || {
+            if let Some(win) = win_weak.upgrade() {
+                win.set_precipitation_load_all_hours_button_text("all hours fetched".into());
+                win.set_precipitation_load_all_hours_button_enabled(false);
+            }
+        })
+        .ok();
+    });
 }
 
 fn update_active_layer_from_category_and_sublayer(win: &MainWindow) {
