@@ -19,6 +19,7 @@ enum InitialDataMessage {
     Map(Vec<u8>),
     ClearDarkSky(Vec<u8>),
     Sounding(Vec<u8>),
+    Aurora,
 }
 
 fn main() -> Result<(), slint::PlatformError> {
@@ -44,6 +45,7 @@ fn main() -> Result<(), slint::PlatformError> {
     app::environment_canada::setup_environment_canada_callbacks(&main_window);
     app::sounding::setup_sounding_callbacks(&main_window);
     app::precipitation::setup_precipitation_callbacks(&main_window);
+    app::aurora::setup_aurora_callbacks(&main_window);
 
     // Set up NINA URL change callback handler
     let main_window_weak_nina = main_window.as_weak();
@@ -546,6 +548,9 @@ thread::spawn(move || {
                         InitialDataMessage::Sounding(image) => {
                             app::sounding::set_sounding_image(&window, image);
                             info!("Initial sounding data loaded");
+                        }
+                        InitialDataMessage::Aurora => {
+                            info!("Initial Aurora data loaded");
                         }
                     }
                 }

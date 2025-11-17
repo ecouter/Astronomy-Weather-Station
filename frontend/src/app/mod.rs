@@ -11,3 +11,4 @@ pub mod weather;
 pub mod map;
 pub mod sounding;
 pub mod precipitation;
+pub mod aurora;

@@ -416,6 +416,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "aurora"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "futures",
+ "log",
+ "pretty_env_logger",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "auto_enums"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6150,6 +6165,7 @@ name = "weather-frontend"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "aurora",
  "chrono",
  "cleardarksky",
  "clearoutside",
