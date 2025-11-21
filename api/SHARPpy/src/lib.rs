@@ -1,56 +1,63 @@
-use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList};
-use std::path::Path;
+use std::path::PathBuf;
+use std::process::Stdio;
 
-/// Generate a GFS atmospheric sounding plot using SHARPpy (async version)
-pub async fn generate_gfs_sounding_async(lat: f64, lon: f64, output_file: Option<String>, title: Option<String>) -> Result<String, anyhow::Error> {
-    // Use tokio::task::spawn_blocking to run the synchronous Python code in a blocking task
+/// Generate a GFS atmospheric sounding plot using SHARPpy executable (async version)
+pub async fn generate_gfs_sounding_async(lat: f64, lon: f64, output_file: Option<String>, _title: Option<String>) -> Result<String, anyhow::Error> {
+    // Use tokio::task::spawn_blocking to run the synchronous command execution in a blocking task
     tokio::task::spawn_blocking(move || {
-        pyo3::prepare_freethreaded_python();
+        // Get the path to the executable
+        let exe_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("dist")
+            .join("create_sounding_gfs");
 
-        Python::with_gil(|py| -> Result<String, anyhow::Error> {
-            // Import sys to add the path
-            let sys = py.import("sys").map_err(|e| anyhow::anyhow!("Failed to import sys: {}", e))?;
-            let path_attr = sys.getattr("path").map_err(|e| anyhow::anyhow!("Failed to get sys.path: {}", e))?;
+        // Verify executable exists
+        if !exe_path.exists() {
+            return Err(anyhow::anyhow!("SHARPpy executable not found at: {}", exe_path.display()));
+        }
 
-            // Try to downcast to PyList
-            let sys_path = match path_attr.downcast::<PyList>() {
-                Ok(list) => list,
-                Err(_) => return Err(anyhow::anyhow!("Failed to get sys.path as PyList")),
-            };
+        // Build command arguments
+        let mut args = vec![
+            "--lat".to_string(),
+            format!("{}", lat),
+            "--lon".to_string(),
+            format!("{}", lon),
+        ];
 
-            // Add the current directory and SHARPpy directory to Python path
-            let current_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-            let sharppy_path = current_dir.join("SHARPpy");
+        // Add output file if specified
+        let final_output_path = if let Some(output) = &output_file {
+            args.extend_from_slice(&["--output".to_string(), output.clone()]);
+            output.clone()
+        } else {
+            "sounding_gfs.png".to_string()
+        };
 
-            sys_path.insert(0, current_dir.to_str().unwrap()).map_err(|e| anyhow::anyhow!("Failed to insert current dir: {}", e))?;
-            sys_path.insert(0, sharppy_path.to_str().unwrap()).map_err(|e| anyhow::anyhow!("Failed to insert SHARPpy path: {}", e))?;
+        // Execute the command asynchronously, but since we're in spawn_blocking, use std::process::Command
+        let output = std::process::Command::new(&exe_path)
+            .args(&args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .map_err(|e| anyhow::anyhow!("Failed to execute SHARPpy executable: {}", e))?;
 
-            // Import the create_sounding_gfs module
-            let create_sounding = py.import("create_sounding_gfs").map_err(|e| anyhow::anyhow!("Failed to import create_sounding_gfs: {}", e))?;
+        // Check if command was successful
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow::anyhow!("SHARPpy executable failed: {}", stderr));
+        }
 
-            // Get the generate_gfs_sounding function
-            let generate_func = create_sounding.getattr("generate_gfs_sounding").map_err(|e| anyhow::anyhow!("Failed to get generate_gfs_sounding function: {}", e))?;
+        // Verify output file was created
+        if !std::path::Path::new(&final_output_path).exists() {
+            return Err(anyhow::anyhow!("SHARPpy executable did not create output file: {}", final_output_path));
+        }
 
-            // Prepare arguments
-            let args = PyDict::new(py);
-            args.set_item("lat", lat).map_err(|e| anyhow::anyhow!("Failed to set lat: {}", e))?;
-            args.set_item("lon", lon).map_err(|e| anyhow::anyhow!("Failed to set lon: {}", e))?;
-
-            if let Some(output) = output_file {
-                args.set_item("output_file", output).map_err(|e| anyhow::anyhow!("Failed to set output_file: {}", e))?;
+        // Log success
+        if let Ok(stdout) = String::from_utf8(output.stdout) {
+            if !stdout.trim().is_empty() {
+                println!("SHARPpy output: {}", stdout.trim());
             }
+        }
 
-            if let Some(t) = title {
-                args.set_item("title", t).map_err(|e| anyhow::anyhow!("Failed to set title: {}", e))?;
-            }
-
-            // Call the function
-            let result_obj = generate_func.call((), Some(args)).map_err(|e| anyhow::anyhow!("Failed to call generate_gfs_sounding: {}", e))?;
-            let result: String = result_obj.extract().map_err(|e| anyhow::anyhow!("Failed to extract result: {}", e))?;
-
-            Ok(result)
-        })
+        Ok(final_output_path)
     }).await?
 }
 

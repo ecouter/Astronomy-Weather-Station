@@ -8,6 +8,7 @@ export component SoundingPage inherits Rectangle {
     in property <bool> loading;
     in property <string> error_message;
     callback go_back();
+    callback refresh_sounding();
 
     VerticalLayout {
         padding-left: 25px;
@@ -16,12 +17,16 @@ export component SoundingPage inherits Rectangle {
         padding-bottom: 20px;
         spacing: 10px;
 
-        // Back button and title
+        // Back button, refresh button, and title
         HorizontalLayout {
             height: 40px;
             Button {
                 text: "Back";
                 clicked => { go_back(); }
+            }
+            Button {
+                text: "Refresh";
+                clicked => { refresh_sounding(); }
             }
             Text {
                 text: "SHARPpy GFS Sounding";

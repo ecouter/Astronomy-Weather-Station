@@ -1,7 +1,7 @@
 extern crate pretty_env_logger;
 #[macro_use] extern crate log;
 
-use sharppy::{generate_sounding, SoundingParams};
+use sharppy::{generate_sounding, SoundingParams, generate_gfs_sounding_async};
 use std::env;
 
 #[tokio::main]
@@ -44,19 +44,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         info!("Title: {}", t);
     }
 
-    // Create sounding parameters
-    let mut params = SoundingParams::new(lat, lon);
-
-    if let Some(file) = output_file {
-        params = params.with_output_file(file);
-    }
-
-    if let Some(t) = title {
-        params = params.with_title(t);
-    }
-
-    // Generate the sounding
-    match generate_sounding(params) {
+    // Generate the sounding using the async function directly (no nested runtime)
+    match generate_gfs_sounding_async(lat, lon, output_file.map(|s| s.to_string()), title.map(|s| s.to_string())).await {
         Ok(output_path) => {
             info!("✅ Successfully generated GFS sounding");
             info!("📊 Sounding plot saved to: {}", output_path);

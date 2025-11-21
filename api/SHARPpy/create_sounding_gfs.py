@@ -4,18 +4,26 @@ SHARPpy Sounding Generator from Online GFS BUFKIT Data
 
 This script downloads GFS BUFKIT data from online sources and creates
 a complete atmospheric sounding overview using SHARPpy.
+
+Command Line Usage:
+    python create_sounding_gfs.py [--lat LAT] [--lon LON] [--output FILE]
+
+    --lat: Latitude for sounding location (required for custom coordinates)
+    --lon: Longitude for sounding location (required for custom coordinates)
+    --output: Output file path (default: sounding_gfs.png)
+
+If no coordinates are specified, the script runs the test function with
+default coordinates (48N, -70.5E).
 """
 
 import os
 import sys
+import argparse
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
-
-# Add SHARPpy to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'SHARPpy'))
 
 import sharppy
 import sharppy.sharptab.profile as profile
@@ -41,6 +49,9 @@ from qtpy.QtWidgets import QApplication, QWidget
 from qtpy.QtCore import Qt, Signal
 QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
 QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
+
+# Create QApplication instance for Qt widgets used in SHARPpy
+app = QApplication([])
 
 # Import matplotlib plotting functions
 from sharppy.plot.skew import draw_title, draw_dry_adiabats, draw_mixing_ratio_lines, draw_moist_adiabats
@@ -377,7 +388,23 @@ def test_gfs_sounding():
 
 
 if __name__ == '__main__':
-    # Test GFS sounding generation
-    success = test_gfs_sounding()
-    if not success:
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description='Generate GFS sounding with optional coordinates')
+    parser.add_argument('--lat', type=float, help='Latitude for sounding location (required for custom coordinates)')
+    parser.add_argument('--lon', type=float, help='Longitude for sounding location (required for custom coordinates)')
+    parser.add_argument('--output', type=str, default='sounding_gfs.png', help='Output file path')
+
+    args = parser.parse_args()
+
+    if args.lat is not None and args.lon is not None:
+        # Generate sounding with custom coordinates
+        try:
+            generate_gfs_sounding(args.lat, args.lon, args.output)
+            print(f"GFS sounding saved to {args.output}")
+        except Exception as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+    else:
+        # Run test function with default coordinates
+        success = test_gfs_sounding()
+        if not success:
+            sys.exit(1)

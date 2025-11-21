@@ -10,3 +10,7 @@ Documentation
 cache
 __pycache__
 sounding_gfs.png
+venv
+build
+dist
+*.spec

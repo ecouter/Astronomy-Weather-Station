@@ -215,6 +215,7 @@ export component MainWindow inherits Window {
     callback env_canada_relative_humidity_previous();
     callback env_canada_relative_humidity_next();
     callback show_sounding_page();
+    callback refresh_sounding_page();
     callback nina_url_saved(int);
 
     // Precipitation callbacks (handled in Rust via app::precipitation)
@@ -1127,6 +1128,7 @@ export component MainWindow inherits Window {
         loading: loading;
         error_message: error_message;
         go_back => { show_sounding = false; }
+        refresh_sounding => { refresh_sounding_page(); }
     }
 
     if (show_precipitation): PrecipitationPage {

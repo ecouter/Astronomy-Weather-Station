@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
-use slint::ComponentHandle;
+use slint::{ComponentHandle, invoke_from_event_loop};
 use crate::MainWindow;
 use crate::app::coordinates;
 use crate::app::utils::decode_png_to_slint_image;
@@ -9,51 +9,116 @@ pub static SOUNDING_LOADING: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false))
 
 pub fn setup_sounding_callbacks(main_window: &MainWindow) {
     let main_window_weak = main_window.as_weak();
-    main_window.on_show_sounding_page(move || {
-        let window_weak = main_window_weak.clone();
-        // Check if already loading to prevent multiple calls
-        {
-            let loading = SOUNDING_LOADING.lock().unwrap();
-            if *loading {
-                info!("Sounding already loading, skipping duplicate call");
-                return;
-            }
-        }
 
-        // Spawn a complete separate thread for the entire operation to avoid UI freezing
-        std::thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                let window = window_weak.upgrade();
-                if let Some(window) = window {
-                    info!("Sounding page opened, loading sounding image...");
-                    // Get coordinates
-                    let (lat, lon) = match coordinates::load_coordinates(&window) {
-                        Ok(coords) => coords,
-                        Err(e) => {
-                            error!("Failed to load coordinates: {}", e);
-                            window.set_error_message(format!("Failed to load coordinates: {}", e).into());
-                            return;
-                        }
-                    };
-                    match fetch_sounding_image(lat, lon).await {
-                        Ok(image) => {
-                            set_sounding_image(&window, image);
-                        }
-                        Err(e) => {
-                            error!("Failed to load sounding image: {}", e);
-                            window.set_error_message(format!("Failed to load sounding image: {}", e).into());
-                            // Clear loading state
-                            {
-                                let mut loading = SOUNDING_LOADING.lock().unwrap();
-                                *loading = false;
+    main_window.on_show_sounding_page({
+        let main_window_weak = main_window_weak.clone();
+        move || {
+            let window_weak = main_window_weak.clone();
+            // Check if already loading to prevent multiple calls
+            {
+                let loading = SOUNDING_LOADING.lock().unwrap();
+                if *loading {
+                    info!("Sounding already loading, skipping duplicate call");
+                    return;
+                }
+            }
+
+            // Spawn a complete separate thread for the entire operation to avoid UI freezing
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                rt.block_on(async {
+                    let window = window_weak.upgrade();
+                    if let Some(window) = window {
+                        info!("Sounding page opened, loading sounding image...");
+                        // Get coordinates
+                        let (lat, lon) = match coordinates::load_coordinates(&window) {
+                            Ok(coords) => coords,
+                            Err(e) => {
+                                error!("Failed to load coordinates: {}", e);
+                                window.set_error_message(format!("Failed to load coordinates: {}", e).into());
+                                return;
                             }
-                            window.set_loading(false);
+                        };
+                        match fetch_sounding_image(lat, lon).await {
+                            Ok(image) => {
+                                set_sounding_image(&window, image);
+                            }
+                            Err(e) => {
+                                error!("Failed to load sounding image: {}", e);
+                                window.set_error_message(format!("Failed to load sounding image: {}", e).into());
+                                // Clear loading state
+                                {
+                                    let mut loading = SOUNDING_LOADING.lock().unwrap();
+                                    *loading = false;
+                                }
+                                window.set_loading(false);
+                            }
                         }
                     }
-                }
+                });
             });
-        });
+        }
+    });
+
+    main_window.on_refresh_sounding_page({
+        let main_window_weak = main_window_weak.clone();
+        move || {
+            let window_weak = main_window_weak.clone();
+            // Check if already loading to prevent multiple calls during refresh
+            {
+                let loading = SOUNDING_LOADING.lock().unwrap();
+                if *loading {
+                    info!("Sounding already loading, skipping refresh call");
+                    return;
+                }
+            }
+
+            // Use invoke_from_event_loop like other working callbacks in main.rs
+            invoke_from_event_loop(move || {
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                let window = window_weak.upgrade();
+                if let Some(window) = window {
+                    // Set loading state
+                    {
+                        let mut loading = SOUNDING_LOADING.lock().unwrap();
+                        *loading = true;
+                    }
+                    window.set_loading(true);
+
+                    rt.block_on(async {
+                        match coordinates::load_coordinates(&window) {
+                            Ok((lat, lon)) => {
+                                match fetch_sounding_image(lat, lon).await {
+                                    Ok(image) => {
+                                        set_sounding_image(&window, image);
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to refresh sounding image: {}", e);
+                                        window.set_error_message(format!("Failed to refresh sounding image: {}", e).into());
+                                        // Clear loading state
+                                        {
+                                            let mut loading = SOUNDING_LOADING.lock().unwrap();
+                                            *loading = false;
+                                        }
+                                        window.set_loading(false);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                error!("Failed to load coordinates: {}", e);
+                                window.set_error_message(format!("Failed to load coordinates: {}", e).into());
+                                // Clear loading state
+                                {
+                                    let mut loading = SOUNDING_LOADING.lock().unwrap();
+                                    *loading = false;
+                                }
+                                window.set_loading(false);
+                            }
+                        }
+                    });
+                }
+            }).unwrap();
+        }
     });
 }
 
@@ -92,7 +157,10 @@ pub fn set_sounding_image(main_window: &MainWindow, image_data: Vec<u8>) {
     }
     main_window.set_loading(false);
     match decode_png_to_slint_image(&image_data) {
-        Ok(image) => main_window.set_sounding_image(image),
+        Ok(image) => {
+            main_window.set_sounding_image(image);
+            info!("Successfully set sounding image");
+        },
         Err(e) => error!("Failed to decode sounding image: {}", e),
     }
 }
