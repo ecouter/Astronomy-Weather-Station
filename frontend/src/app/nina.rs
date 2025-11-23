@@ -46,6 +46,8 @@ async fn update_single_nina_image(main_window: &MainWindow, slot_index: usize, b
             match decode_png_to_slint_image(&image_data) {
                 Ok(slint_image) => {
                     debug!("Successfully decoded PNG to Slint image for slot {}", slot_index + 1);
+                    // Clear any existing error state since image fetch succeeded
+                    clear_nina_error_state(main_window, slot_index);
                     match slot_index {
                         0 => {
                             main_window.set_nina_image1(slint_image);
@@ -75,18 +77,21 @@ async fn update_single_nina_image(main_window: &MainWindow, slot_index: usize, b
                             warn!("Invalid slot index {} for NINA image update", slot_index);
                         }
                     }
+                    Ok(())
                 }
                 Err(e) => {
                     error!("Failed to decode NINA image for slot {}: {}", slot_index + 1, e);
+                    set_nina_error_state(main_window, slot_index, "Failed to decode image data");
+                    Err(Box::new(NinaError(format!("Failed to decode image data: {}", e))))
                 }
             }
         }
         Err(e) => {
             error!("Failed to fetch NINA image from {} for slot {}: {}", base_url, slot_index + 1, e);
+            set_nina_error_state(main_window, slot_index, "Failed to fetch image");
+            Err(Box::new(NinaError(format!("Failed to fetch image: {}", e))))
         }
     }
-
-    Ok(())
 }
 
 /// Fetch and update a single NINA guiding graph for the given slot
@@ -158,27 +163,43 @@ async fn update_single_nina_guiding_graph(main_window: &MainWindow, slot_index: 
                                     warn!("Invalid slot index {} for NINA guiding graph update", slot_index);
                                 }
                             }
+                            Ok(())
                         }
                         Err(e) => {
                             error!("Failed to decode NINA guiding graph for slot {}: {}", slot_index + 1, e);
+                            Err(Box::new(NinaError(format!("Failed to decode guiding graph: {}", e))))
                         }
                     }
                 }
                 Err(e) => {
                     error!("Failed to generate guiding graph PNG for slot {}: {}", slot_index + 1, e);
+                    Err(Box::new(NinaError(format!("Failed to generate guiding graph: {}", e))))
                 }
             }
         }
         Err(e) => {
             error!("Failed to fetch guiding graph data from {} for slot {}: {}", base_url, slot_index + 1, e);
+            Err(Box::new(NinaError(format!("Failed to fetch guiding graph: {}", e))))
         }
     }
-
-    Ok(())
 }
 
+use std::fmt;
+
+/// Custom error type for NINA operations
+#[derive(Debug)]
+pub struct NinaError(pub String);
+
+impl fmt::Display for NinaError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for NinaError {}
+
 /// Start websocket listener for a NINA slot
-pub fn start_nina_websocket(slot_index: usize, base_url: String, main_window: &MainWindow) {
+pub fn start_nina_websocket(slot_index: usize, base_url: String, main_window: &MainWindow) -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting websocket listener for NINA slot {} with URL: {}", slot_index + 1, base_url);
 
     // Stop existing websocket for this slot if any
@@ -193,40 +214,43 @@ pub fn start_nina_websocket(slot_index: usize, base_url: String, main_window: &M
               slot_index + 1,
               event.event);
 
+        // Update UI via slint's event loop - spawn the async operation on a separate thread
+        // to avoid nested runtime issues
         let main_window_weak = main_window_weak.clone();
         let base_url = base_url_clone.clone();
-
-        // Spawn a task to handle the image update in the UI thread
-        match slint::invoke_from_event_loop(move || {
-            debug!("Invoking UI update for NINA slot {} in event loop", slot_index + 1);
+        std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
-            let window = main_window_weak.upgrade();
-            if let Some(window) = window {
-                rt.block_on(async {
+            rt.block_on(async {
+                let window_opt = main_window_weak.upgrade();
+                if let Some(window) = window_opt {
                     if let Err(e) = update_single_nina_image(&window, slot_index, &base_url).await {
                         error!("Failed to update NINA image for slot {}: {}", slot_index + 1, e);
                     }
-                });
-            } else {
-                warn!("Failed to upgrade main window weak reference for slot {}", slot_index + 1);
-            }
-        }) {
-            Ok(_) => debug!("Successfully invoked UI update for slot {}", slot_index + 1),
-            Err(e) => error!("Failed to invoke UI update for slot {}: {}", slot_index + 1, e),
-        }
+                } else {
+                    warn!("Failed to upgrade main window weak reference for slot {}", slot_index + 1);
+                }
+            });
+        });
     };
 
     // Spawn the websocket listener
-    let (_handle, sender) = nina::spawn_nina_websocket_listener(base_url, on_image_prepared);
+    match nina::spawn_nina_websocket_listener(base_url, on_image_prepared) {
+        Ok((_handle, sender)) => {
+            // Store the sender
+            {
+                let mut senders = NINA_WEBSOCKET_SENDERS.lock().unwrap();
+                senders[slot_index] = Some(Arc::new(Mutex::new(Some(sender))));
+                info!("Stored websocket stop sender for NINA slot {}", slot_index + 1);
+            }
 
-    // Store the sender
-    {
-        let mut senders = NINA_WEBSOCKET_SENDERS.lock().unwrap();
-        senders[slot_index] = Some(Arc::new(Mutex::new(Some(sender))));
-        info!("Stored websocket stop sender for NINA slot {}", slot_index + 1);
+            info!("Started websocket listener for NINA slot {}", slot_index + 1);
+            Ok(())
+        }
+        Err(e) => {
+            error!("Failed to start NINA websocket listener for slot {}: {}", slot_index + 1, e);
+            Err(Box::new(NinaError(format!("Failed to establish websocket connection: {}", e))))
+        }
     }
-
-    info!("Started websocket listener for NINA slot {}", slot_index + 1);
 }
 
 /// Stop websocket listener for a NINA slot
@@ -315,7 +339,7 @@ pub fn stop_nina_guiding_thread(slot_index: usize) {
 }
 
 /// Handle URL change for a NINA slot
-pub async fn handle_nina_url_change(slot_index: usize, new_url: String, main_window: &MainWindow) {
+pub async fn handle_nina_url_change(slot_index: usize, new_url: String, main_window: &MainWindow) -> Result<(), Box<dyn std::error::Error>> {
     info!("Handling URL change for NINA slot {}: '{}'", slot_index + 1, new_url);
 
     if new_url.trim().is_empty() {
@@ -323,6 +347,10 @@ pub async fn handle_nina_url_change(slot_index: usize, new_url: String, main_win
         // Empty URL - stop websocket and guiding thread
         stop_nina_websocket(slot_index);
         stop_nina_guiding_thread(slot_index);
+
+        // Clear error state for empty URL
+        clear_nina_error_state(main_window, slot_index);
+
         // Clear the images
         let empty_image = slint::Image::default();
         match slot_index {
@@ -360,10 +388,54 @@ pub async fn handle_nina_url_change(slot_index: usize, new_url: String, main_win
                 warn!("Invalid slot index {} for clearing NINA images", slot_index);
             }
         }
+        return Ok(());
     } else {
         info!("Valid URL provided for slot {}, starting websocket and guiding thread", slot_index + 1);
-        // Valid URL - start websocket and guiding thread
-        start_nina_websocket(slot_index, new_url.clone(), main_window);
-        start_nina_guiding_thread(slot_index, new_url, main_window);
+
+        // Try to start websocket connection - this now checks for initial connection
+        match start_nina_websocket(slot_index, new_url.clone(), main_window) {
+            Ok(_) => {
+                info!("Successfully started websocket for NINA slot {}", slot_index + 1);
+                // Clear any error state
+                clear_nina_error_state(main_window, slot_index);
+                // Start guiding thread (this doesn't have connection errors to check)
+                start_nina_guiding_thread(slot_index, new_url, main_window);
+                Ok(())
+            }
+            Err(e) => {
+                error!("Failed to start websocket for NINA slot {}: {}", slot_index + 1, e);
+                // Set error state
+                set_nina_error_state(main_window, slot_index, "Connection could not be established");
+                // Still try to start guiding thread (in case images work even if websocket doesn't)
+                start_nina_guiding_thread(slot_index, new_url, main_window);
+                return Err(e);
+            }
+        }
+    }
+}
+
+/// Clear NINA error state for a specific slot
+pub fn clear_nina_error_state(main_window: &MainWindow, slot_index: usize) {
+    match slot_index {
+        0 => main_window.set_nina_error1("".into()),
+        1 => main_window.set_nina_error2("".into()),
+        2 => main_window.set_nina_error3("".into()),
+        3 => main_window.set_nina_error4("".into()),
+        4 => main_window.set_nina_error5("".into()),
+        5 => main_window.set_nina_error6("".into()),
+        _ => warn!("Invalid slot index {} for clearing NINA error state", slot_index),
+    }
+}
+
+/// Set NINA error state for a specific slot
+pub fn set_nina_error_state(main_window: &MainWindow, slot_index: usize, error_message: &str) {
+    match slot_index {
+        0 => main_window.set_nina_error1(error_message.into()),
+        1 => main_window.set_nina_error2(error_message.into()),
+        2 => main_window.set_nina_error3(error_message.into()),
+        3 => main_window.set_nina_error4(error_message.into()),
+        4 => main_window.set_nina_error5(error_message.into()),
+        5 => main_window.set_nina_error6(error_message.into()),
+        _ => warn!("Invalid slot index {} for setting NINA error state", slot_index),
     }
 }

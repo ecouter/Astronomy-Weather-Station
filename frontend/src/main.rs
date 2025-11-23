@@ -2,6 +2,8 @@ mod app;
 
 slint::include_modules!();
 
+
+
 extern crate pretty_env_logger;
 #[macro_use] extern crate log;
 
@@ -68,8 +70,17 @@ fn main() -> Result<(), slint::PlatformError> {
                     _ => return,
                 };
                 info!("NINA URL change callback: slot {} -> '{}'", url_index + 1, url);
+
+                // Clear any existing error state first
+                app::nina::clear_nina_error_state(&window, url_index);
+
                 rt.block_on(async {
-                    app::nina::handle_nina_url_change(url_index, url, &window).await;
+                    if let Err(e) = app::nina::handle_nina_url_change(url_index, url, &window).await {
+                        error!("Failed to handle NINA URL change for slot {}: {}", url_index + 1, e);
+                        app::nina::set_nina_error_state(&window, url_index, "Connection could not be established");
+                    } else {
+                        info!("Successfully handled NINA URL change for slot {}", url_index + 1);
+                    }
                 });
             }
         }).unwrap();

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use futures_util::StreamExt;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use std::panic;
 
 /// Generic API response wrapper from NINA
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -334,17 +335,68 @@ pub async fn fetch_prepared_image(base_url: &str, params: &PreparedImageParams) 
 }
 
 /// Spawn a websocket listener for a NINA instance
-/// Returns a JoinHandle and a Sender to stop the listener
+/// Returns a JoinHandle and a Sender to stop the listener, or an error if initial connection fails
 pub fn spawn_nina_websocket_listener<F>(
     base_url: String,
     on_image_prepared: F,
-) -> (std::thread::JoinHandle<()>, std::sync::mpsc::Sender<()>)
+) -> Result<(std::thread::JoinHandle<()>, std::sync::mpsc::Sender<()>), anyhow::Error>
 where
     F: Fn(ImagePreparedEvent) + Send + Sync + 'static,
 {
     let on_image_prepared = Arc::new(on_image_prepared);
     let (stop_tx, stop_rx) = std::sync::mpsc::channel();
 
+    // First, attempt an initial connection with timeout to check if the websocket is accessible
+    let host_port = base_url
+        .trim_start_matches("http://")
+        .trim_start_matches("https://")
+        .split('/')
+        .next()
+        .unwrap_or("");
+    let ws_url = format!("ws://{}/v2/socket", host_port);
+
+    info!("Attempting initial NINA websocket connection test to: {}", ws_url);
+
+    // Create a runtime for the initial connection test (wrapped in catch_unwind to handle panic)
+    let initial_connect_result = match panic::catch_unwind(|| {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            // Try to connect with a 5-second timeout
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                connect_async(&ws_url)
+            ).await {
+                Ok(Ok((_ws_stream, _response))) => {
+                    info!("Initial websocket connection test successful to {}", ws_url);
+                    Ok(())
+                }
+                Ok(Err(e)) => {
+                    error!("Initial websocket connection test failed to {}: {}", ws_url, e);
+                    Err(anyhow::anyhow!("Websocket connection failed: {:?}", e))
+                }
+                Err(_) => {
+                    let timeout_error = std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "Websocket connection timeout"
+                    );
+                    error!("Initial websocket connection test timeout to {}: {}", ws_url, timeout_error);
+                    Err(anyhow::anyhow!("Websocket connection timeout: {:?}", timeout_error))
+                }
+            }
+        })
+    }) {
+        Ok(result) => result,
+        Err(_) => {
+            error!("Panic during websocket connection test: runtime creation failed");
+            return Err(anyhow::anyhow!("Websocket connection test failed: internal error (unable to create connection context)"));
+        }
+    };
+
+    if let Err(e) = initial_connect_result {
+        return Err(anyhow::anyhow!("Failed to establish initial websocket connection to {}: {}", ws_url, e));
+    }
+
+    // Initial connection test passed, now spawn the listener thread
     let handle = std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {
@@ -460,7 +512,7 @@ where
         })
     });
 
-    (handle, stop_tx)
+    Ok((handle, stop_tx))
 }
 
 /// Generate a guiding graph PNG for the given data

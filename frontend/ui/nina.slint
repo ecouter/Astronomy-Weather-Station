@@ -4,12 +4,20 @@ export component NinaPage inherits Rectangle {
     background: #1c1c1c;
     height: 720px;
     width: 1280px;
+
+
     in property <image> image1;
     in property <image> image2;
     in property <image> image3;
     in property <image> image4;
     in property <image> image5;
     in property <image> image6;
+    in property <string> error1;
+    in property <string> error2;
+    in property <string> error3;
+    in property <string> error4;
+    in property <string> error5;
+    in property <string> error6;
     in property <image> guiding_image1;
     in property <image> guiding_image2;
     in property <image> guiding_image3;
@@ -124,6 +132,24 @@ export component NinaPage inherits Rectangle {
                                 height: 100%;
                             }
                         }
+
+                        // Error overlay
+                        if (error1 != ""): Rectangle {
+                            background: #000000aa; // Semi-transparent black background
+                            width: 100%;
+                            height: 100%;
+
+                            Text {
+                                text: error1;
+                                color: #ff0000;
+                                font-size: 24px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                width: 100%;
+                                height: 100%;
+                            }
+                        }
                     }
                     clicked => {
                         if (image1.width > 0 && image1.height > 0) {
@@ -188,6 +214,24 @@ export component NinaPage inherits Rectangle {
                                 height: 100%;
                             }
                         }
+
+                        // Error overlay
+                        if (error2 != ""): Rectangle {
+                            background: #000000aa; // Semi-transparent black background
+                            width: 100%;
+                            height: 100%;
+
+                            Text {
+                                text: error2;
+                                color: #ff0000;
+                                font-size: 24px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                width: 100%;
+                                height: 100%;
+                            }
+                        }
                     }
                     clicked => {
                         if (image2.width > 0 && image2.height > 0) {
@@ -243,6 +287,24 @@ export component NinaPage inherits Rectangle {
 
                             Text {
                                 text: guider_state3;
+                                color: #ff0000;
+                                font-size: 24px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                width: 100%;
+                                height: 100%;
+                            }
+                        }
+
+                        // Error overlay
+                        if (error3 != ""): Rectangle {
+                            background: #000000aa; // Semi-transparent black background
+                            width: 100%;
+                            height: 100%;
+
+                            Text {
+                                text: error3;
                                 color: #ff0000;
                                 font-size: 24px;
                                 font-weight: 700;
@@ -321,6 +383,24 @@ export component NinaPage inherits Rectangle {
                                 height: 100%;
                             }
                         }
+
+                        // Error overlay
+                        if (error4 != ""): Rectangle {
+                            background: #000000aa; // Semi-transparent black background
+                            width: 100%;
+                            height: 100%;
+
+                            Text {
+                                text: error4;
+                                color: #ff0000;
+                                font-size: 24px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                width: 100%;
+                                height: 100%;
+                            }
+                        }
                     }
                     clicked => {
                         if (image4.width > 0 && image4.height > 0) {
@@ -385,6 +465,24 @@ export component NinaPage inherits Rectangle {
                                 height: 100%;
                             }
                         }
+
+                        // Error overlay
+                        if (error5 != ""): Rectangle {
+                            background: #000000aa; // Semi-transparent black background
+                            width: 100%;
+                            height: 100%;
+
+                            Text {
+                                text: error5;
+                                color: #ff0000;
+                                font-size: 24px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                width: 100%;
+                                height: 100%;
+                            }
+                        }
                     }
                     clicked => {
                         if (image5.width > 0 && image5.height > 0) {
@@ -440,6 +538,24 @@ export component NinaPage inherits Rectangle {
 
                             Text {
                                 text: guider_state6;
+                                color: #ff0000;
+                                font-size: 24px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                width: 100%;
+                                height: 100%;
+                            }
+                        }
+
+                        // Error overlay
+                        if (error6 != ""): Rectangle {
+                            background: #000000aa; // Semi-transparent black background
+                            width: 100%;
+                            height: 100%;
+
+                            Text {
+                                text: error6;
                                 color: #ff0000;
                                 font-size: 24px;
                                 font-weight: 700;
