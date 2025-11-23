@@ -10,11 +10,12 @@ extern crate pretty_env_logger;
 use std::time::Duration;
 use std::thread;
 use std::sync::mpsc;
+use std::collections::HashMap;
 
 #[derive(Clone)]
 enum InitialDataMessage {
     Weather(app::weather::WeatherData),
-    CloudCover(Vec<Vec<u8>>),
+    CloudCover(std::collections::HashMap<u32, Vec<u8>>),
     Wind((Vec<Vec<u8>>, Vec<u8>)),
     ClearOutside(app::clearoutside::ClearOutsideData),
     MeteoBlue(Vec<app::meteoblue::MeteoBlueNightData>),
