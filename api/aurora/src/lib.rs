@@ -109,9 +109,7 @@ pub async fn fetch_all_aurora_images() -> Result<AuroraAllSkyImages, anyhow::Err
 async fn fetch_image(url: &str) -> Result<Vec<u8>, anyhow::Error> {
     info!("Fetching image from: {}", url);
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()?;
+    let client = reqwest::Client::builder().build()?;
     let response = client.get(url).send().await?;
 
     if !response.status().is_success() {

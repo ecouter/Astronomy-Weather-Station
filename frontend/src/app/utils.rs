@@ -89,6 +89,27 @@ pub fn decode_gif_to_slint_image(gif_data: &[u8]) -> Result<slint::Image, Box<dy
     }
 }
 
+pub fn resize_png_if_needed(image_data: Vec<u8>, max_width: u32) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let img = image::load_from_memory(&image_data)?;
+
+    let width = img.width();
+
+    if width > max_width {
+        let height = img.height();
+        let new_width = max_width;
+        let new_height = (height as f32 * (max_width as f32 / width as f32)) as u32;
+
+        let resized = img.resize(new_width, new_height, image::imageops::FilterType::Lanczos3);
+
+        let mut buffer = Vec::new();
+        resized.write_to(&mut std::io::Cursor::new(&mut buffer), image::ImageFormat::Png)?;
+
+        Ok(buffer)
+    } else {
+        Ok(image_data)
+    }
+}
+
 pub fn blend_images(image1_data: &[u8], image2_data: &[u8], weight1: f32, weight2: f32) -> Result<slint::Image, Box<dyn std::error::Error>> {
     use image::ImageFormat;
 

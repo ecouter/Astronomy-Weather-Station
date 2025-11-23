@@ -1,17 +1,11 @@
 use std::sync::Mutex;
+use std::error::Error;
 use once_cell::sync::Lazy;
 use slint::ComponentHandle;
 use crate::MainWindow;
-use crate::app::utils::decode_png_to_slint_image;
-use tokio::time::{timeout, Duration};
+use crate::app::utils::{decode_png_to_slint_image, resize_png_if_needed};
+use tokio::time::Duration;
 
-pub static AURORA_FORECAST_IMAGE: Lazy<Mutex<Vec<u8>>> = Lazy::new(|| Mutex::new(Vec::new()));
-pub static ACE_SOLAR_WIND_IMAGE: Lazy<Mutex<Vec<u8>>> = Lazy::new(|| Mutex::new(Vec::new()));
-pub static DSCOVR_SOLAR_WIND_IMAGE: Lazy<Mutex<Vec<u8>>> = Lazy::new(|| Mutex::new(Vec::new()));
-pub static SPACE_WEATHER_OVERVIEW_IMAGE: Lazy<Mutex<Vec<u8>>> = Lazy::new(|| Mutex::new(Vec::new()));
-pub static ACE_EPAM_IMAGE: Lazy<Mutex<Vec<u8>>> = Lazy::new(|| Mutex::new(Vec::new()));
-pub static CANADIAN_MAGNETIC_IMAGE: Lazy<Mutex<Vec<u8>>> = Lazy::new(|| Mutex::new(Vec::new()));
-pub static ALERTS_TIMELINE_IMAGE: Lazy<Mutex<Vec<u8>>> = Lazy::new(|| Mutex::new(Vec::new()));
 pub static ALL_SKY_IMAGES: Lazy<Mutex<Vec<Vec<u8>>>> = Lazy::new(|| Mutex::new(Vec::new()));
 pub static ALL_SKY_INDEX: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::new(0));
 
@@ -40,19 +34,21 @@ pub fn setup_aurora_callbacks(main_window: &MainWindow) {
                 window.set_aurora_refresh_button_enabled(false);
                 window.set_aurora_refresh_button_text("Refreshing...".into());
 
-                // Clone window for async use
-                let window_clone = window.clone_strong();
-
-                // Start async refresh
-                let rt = tokio::runtime::Runtime::new().unwrap();
-                rt.block_on(async move {
-                    if let Err(e) = update_aurora_images(&window_clone).await {
-                        error!("Aurora refresh failed: {}", e);
-                    }
-                });
-
-                // Start countdown timer
+                // Start countdown timer immediately
                 start_refresh_countdown(&window);
+
+                // Clone weak for async use in background thread
+                let weak_clone = window.as_weak();
+
+                // Spawn background thread for async refresh to avoid freezing UI
+                std::thread::spawn(move || {
+                    let rt = tokio::runtime::Runtime::new().unwrap();
+                    rt.block_on(async move {
+                        if let Err(e) = update_aurora_images(weak_clone).await {
+                            error!("Aurora refresh failed: {}", e);
+                        }
+                    });
+                });
             }
         }).unwrap();
     });
@@ -147,380 +143,243 @@ pub fn setup_aurora_callbacks(main_window: &MainWindow) {
     });
 }
 
-pub async fn update_aurora_images(main_window: &MainWindow) -> Result<(), Box<dyn std::error::Error>> {
+async fn fetch_and_update_single_image(
+    main_window_weak: slint::Weak<MainWindow>,
+    fetch_result: Result<Vec<u8>, anyhow::Error>,
+    setter: fn(&MainWindow, Option<slint::Image>, bool),
+    name: &str,
+) {
+    let name = name.to_string(); // Clone for move
+    match fetch_result {
+        Ok(image_data) => {
+            info!("Successfully fetched: {}", name);
+
+            // Resize image if needed
+            let resized_data = match resize_png_if_needed(image_data, 1920) {
+                Ok(resized) => {
+                    info!("Successfully resized {} image", name);
+                    resized
+                },
+                Err(e) => {
+                    error!("Failed to resize {} image: {}, using original", name, e);
+                    Vec::new() // Use empty to indicate error
+                }
+            };
+
+            slint::invoke_from_event_loop(move || {
+                if let Some(window) = main_window_weak.upgrade() {
+                    if resized_data.is_empty() {
+                        setter(&window, None, true);
+                    } else {
+                        match decode_png_to_slint_image(&resized_data) {
+                            Ok(slint_image) => {
+                                setter(&window, Some(slint_image), false);
+                            }
+                            Err(e) => {
+                                error!("Failed to decode {} image: {}", name, e);
+                                setter(&window, None, true);
+                            }
+                        }
+                    }
+                }
+            }).unwrap();
+        }
+        Err(e) => {
+            error!("Failed to fetch {}: {}", name, e);
+            let name_copy = name.clone();
+            slint::invoke_from_event_loop(move || {
+                if let Some(window) = main_window_weak.upgrade() {
+                    setter(&window, None, true);
+                }
+            }).unwrap();
+        }
+    }
+}
+
+pub async fn update_aurora_images(main_window_weak: slint::Weak<MainWindow>) -> Result<(), Box<dyn std::error::Error>> {
     use aurora::{fetch_aurora_forecast, fetch_ace_real_time_solar_wind, fetch_dscovr_solar_wind,
                      fetch_space_weather_overview, fetch_ace_epam, fetch_canadian_magnetic,
                      fetch_alerts_timeline, fetch_all_aurora_images};
 
-    info!("Updating Aurora images...");
+    info!("Starting Aurora images update...");
 
-    // Fetch simple images concurrently with individual timeouts
-    let mut results = Vec::new();
-    let mut failed_requests = Vec::new();
+    // Create clones for each async block to avoid borrow checker issues
+    let weak1 = main_window_weak.clone();
+    let weak2 = main_window_weak.clone();
+    let weak3 = main_window_weak.clone();
+    let weak4 = main_window_weak.clone();
+    let weak5 = main_window_weak.clone();
+    let weak6 = main_window_weak.clone();
+    let weak7 = main_window_weak.clone();
+    let weak8 = main_window_weak.clone();
 
-    // Aurora Forecast
-    match timeout(Duration::from_secs(15), fetch_aurora_forecast()).await {
-        Ok(Ok(result)) => {
-            results.push(result);
-            info!("Successfully loaded: Aurora Forecast");
-        }
-        Ok(Err(e)) => {
-            error!("Failed to load Aurora Forecast: {}", e);
-            failed_requests.push(format!("Aurora Forecast (error: {})", e));
-            results.push(Vec::new());
-        }
-        Err(_) => {
-            error!("Timeout loading Aurora Forecast after 15 seconds");
-            failed_requests.push("Aurora Forecast (timeout)".to_string());
-            results.push(Vec::new());
-        }
-    }
+    // Run all fetches concurrently using tokio::join! instead of spawn
+    tokio::join!(
+        async {
+            let result = fetch_aurora_forecast().await;
+            fetch_and_update_single_image(weak1, result, |mw, img, err| {
+                if let Some(img) = img {
+                    mw.set_aurora_forecast_image(img);
+                }
+                mw.set_aurora_forecast_error(err);
+            }, "Aurora Forecast").await;
+        },
 
-    // ACE Solar Wind
-    match timeout(Duration::from_secs(15), fetch_ace_real_time_solar_wind()).await {
-        Ok(Ok(result)) => {
-            results.push(result);
-            info!("Successfully loaded: ACE Solar Wind");
-        }
-        Ok(Err(e)) => {
-            error!("Failed to load ACE Solar Wind: {}", e);
-            failed_requests.push(format!("ACE Solar Wind (error: {})", e));
-            results.push(Vec::new());
-        }
-        Err(_) => {
-            error!("Timeout loading ACE Solar Wind after 15 seconds");
-            failed_requests.push("ACE Solar Wind (timeout)".to_string());
-            results.push(Vec::new());
-        }
-    }
+        async {
+            let result = fetch_ace_real_time_solar_wind().await;
+            fetch_and_update_single_image(weak2, result, |mw, img, err| {
+                if let Some(img) = img {
+                    mw.set_aurora_ace_solar_wind_image(img);
+                }
+                mw.set_aurora_ace_solar_wind_error(err);
+            }, "ACE Solar Wind").await;
+        },
 
-    // DSCOVR Solar Wind
-    match timeout(Duration::from_secs(15), fetch_dscovr_solar_wind()).await {
-        Ok(Ok(result)) => {
-            results.push(result);
-            info!("Successfully loaded: DSCOVR Solar Wind");
-        }
-        Ok(Err(e)) => {
-            error!("Failed to load DSCOVR Solar Wind: {}", e);
-            failed_requests.push(format!("DSCOVR Solar Wind (error: {})", e));
-            results.push(Vec::new());
-        }
-        Err(_) => {
-            error!("Timeout loading DSCOVR Solar Wind after 15 seconds");
-            failed_requests.push("DSCOVR Solar Wind (timeout)".to_string());
-            results.push(Vec::new());
-        }
-    }
+        async {
+            let result = fetch_dscovr_solar_wind().await;
+            fetch_and_update_single_image(weak3, result, |mw, img, err| {
+                if let Some(img) = img {
+                    mw.set_aurora_dscovr_solar_wind_image(img);
+                }
+                mw.set_aurora_dscovr_solar_wind_error(err);
+            }, "DSCOVR Solar Wind").await;
+        },
 
-    // Space Weather Overview
-    match timeout(Duration::from_secs(15), fetch_space_weather_overview()).await {
-        Ok(Ok(result)) => {
-            results.push(result);
-            info!("Successfully loaded: Space Weather Overview");
-        }
-        Ok(Err(e)) => {
-            error!("Failed to load Space Weather Overview: {}", e);
-            failed_requests.push(format!("Space Weather Overview (error: {})", e));
-            results.push(Vec::new());
-        }
-        Err(_) => {
-            error!("Timeout loading Space Weather Overview after 15 seconds");
-            failed_requests.push("Space Weather Overview (timeout)".to_string());
-            results.push(Vec::new());
-        }
-    }
+        async {
+            let result = fetch_space_weather_overview().await;
+            fetch_and_update_single_image(weak4, result, |mw, img, err| {
+                if let Some(img) = img {
+                    mw.set_aurora_space_weather_overview_image(img);
+                }
+                mw.set_aurora_space_weather_overview_error(err);
+            }, "Space Weather Overview").await;
+        },
 
-    // ACE EPAM
-    match timeout(Duration::from_secs(15), fetch_ace_epam()).await {
-        Ok(Ok(result)) => {
-            results.push(result);
-            info!("Successfully loaded: ACE EPAM");
-        }
-        Ok(Err(e)) => {
-            error!("Failed to load ACE EPAM: {}", e);
-            failed_requests.push(format!("ACE EPAM (error: {})", e));
-            results.push(Vec::new());
-        }
-        Err(_) => {
-            error!("Timeout loading ACE EPAM after 15 seconds");
-            failed_requests.push("ACE EPAM (timeout)".to_string());
-            results.push(Vec::new());
-        }
-    }
+        async {
+            let result = fetch_ace_epam().await;
+            fetch_and_update_single_image(weak5, result, |mw, img, err| {
+                if let Some(img) = img {
+                    mw.set_aurora_ace_epam_image(img);
+                }
+                mw.set_aurora_ace_epam_error(err);
+            }, "ACE EPAM").await;
+        },
 
-    // Canadian Magnetic
-    match timeout(Duration::from_secs(15), fetch_canadian_magnetic()).await {
-        Ok(Ok(result)) => {
-            results.push(result);
-            info!("Successfully loaded: Canadian Magnetic");
-        }
-        Ok(Err(e)) => {
-            error!("Failed to load Canadian Magnetic: {}", e);
-            failed_requests.push(format!("Canadian Magnetic (error: {})", e));
-            results.push(Vec::new());
-        }
-        Err(_) => {
-            error!("Timeout loading Canadian Magnetic after 15 seconds");
-            failed_requests.push("Canadian Magnetic (timeout)".to_string());
-            results.push(Vec::new());
-        }
-    }
+        async {
+            let result = fetch_canadian_magnetic().await;
+            fetch_and_update_single_image(weak6, result, |mw, img, err| {
+                if let Some(img) = img {
+                    mw.set_aurora_canadian_magnetic_image(img);
+                }
+                mw.set_aurora_canadian_magnetic_error(err);
+            }, "Canadian Magnetic").await;
+        },
 
-    // Alerts Timeline
-    match timeout(Duration::from_secs(15), fetch_alerts_timeline()).await {
-        Ok(Ok(result)) => {
-            results.push(result);
-            info!("Successfully loaded: Alerts Timeline");
-        }
-        Ok(Err(e)) => {
-            error!("Failed to load Alerts Timeline: {}", e);
-            failed_requests.push(format!("Alerts Timeline (error: {})", e));
-            results.push(Vec::new());
-        }
-        Err(_) => {
-            error!("Timeout loading Alerts Timeline after 15 seconds");
-            failed_requests.push("Alerts Timeline (timeout)".to_string());
-            results.push(Vec::new());
-        }
-    }
+        async {
+            let result = fetch_alerts_timeline().await;
+            fetch_and_update_single_image(weak7, result, |mw, img, err| {
+                if let Some(img) = img {
+                    mw.set_aurora_alerts_timeline_image(img);
+                }
+                mw.set_aurora_alerts_timeline_error(err);
+            }, "Alerts Timeline").await;
+        },
 
-    // Handle all-sky images separately since it returns a struct
-    info!("Starting to fetch all-sky images...");
-    let all_sky_images_result = match timeout(Duration::from_secs(15), fetch_all_aurora_images()).await {
-        Ok(Ok(result)) => {
-            info!("Successfully loaded: All Sky Images");
-            result
-        }
-        Ok(Err(e)) => {
-            error!("Failed to load All Sky Images: {}", e);
-            failed_requests.push(format!("All Sky Images (error: {})", e));
-            // Return empty struct
-            aurora::AuroraAllSkyImages {
-                kjell_henriksen_observatory_norway: Vec::new(),
-                hankasalmi_finland: Vec::new(),
-                yellowknife_canada: Vec::new(),
-                athabasca_canada: Vec::new(),
-                glacier_national_park_usa: Vec::new(),
-                hansville_usa: Vec::new(),
-                isle_royale_national_park_usa: Vec::new(),
-                heiligenblut_austria: Vec::new(),
-                calgary_canada: Vec::new(),
-                hobart_australia: Vec::new(),
-            }
-        }
-        Err(_) => {
-            error!("Timeout loading All Sky Images after 15 seconds");
-            failed_requests.push("All Sky Images (timeout)".to_string());
-            // Return empty struct
-            aurora::AuroraAllSkyImages {
-                kjell_henriksen_observatory_norway: Vec::new(),
-                hankasalmi_finland: Vec::new(),
-                yellowknife_canada: Vec::new(),
-                athabasca_canada: Vec::new(),
-                glacier_national_park_usa: Vec::new(),
-                hansville_usa: Vec::new(),
-                isle_royale_national_park_usa: Vec::new(),
-                heiligenblut_austria: Vec::new(),
-                calgary_canada: Vec::new(),
-                hobart_australia: Vec::new(),
-            }
-        }
-    };
-    info!("All-sky images fetch completed, now extracting data...");
+        // All-sky images (fetched as one unit)
+        async {
+            match fetch_all_aurora_images().await {
+                Ok(all_sky_images_result) => {
+                    info!("Successfully fetched: All Sky Images");
 
-    // Extract results in correct order
-    let aurora_forecast = results[0].clone();
-    let ace_solar_wind = results[1].clone();
-    let dscovr_solar_wind = results[2].clone();
-    let space_weather_overview = results[3].clone();
-    let ace_epam = results[4].clone();
-    let canadian_magnetic = results[5].clone();
-    let alerts_timeline = results[6].clone();
+                    let all_sky_vec = vec![
+                        all_sky_images_result.kjell_henriksen_observatory_norway,
+                        all_sky_images_result.hankasalmi_finland,
+                        all_sky_images_result.yellowknife_canada,
+                        all_sky_images_result.athabasca_canada,
+                        all_sky_images_result.glacier_national_park_usa,
+                        all_sky_images_result.hansville_usa,
+                        all_sky_images_result.isle_royale_national_park_usa,
+                        all_sky_images_result.heiligenblut_austria,
+                        all_sky_images_result.calgary_canada,
+                        all_sky_images_result.hobart_australia,
+                    ];
 
-    // Report any failures
-    if !failed_requests.is_empty() {
-        let failure_summary = failed_requests.join(", ");
-        warn!("Some aurora requests failed or timed out: {}", failure_summary);
-    }
+                    // Resize all-sky images if needed
+                    let mut resized_all_sky = Vec::new();
+                    for image_data in all_sky_vec {
+                        let resized = if image_data.is_empty() {
+                            Vec::new()
+                        } else {
+                            match resize_png_if_needed(image_data, 1920) {
+                                Ok(r) => {
+                                    info!("Successfully resized all-sky image");
+                                    r
+                                }
+                                Err(e) => {
+                                    error!("Failed to resize all-sky image: {}", e);
+                                    Vec::new()
+                                }
+                            }
+                        };
+                        resized_all_sky.push(resized);
+                    }
 
-    // Store images in global storage
-    info!("Storing images in global storage...");
-    {
-        *AURORA_FORECAST_IMAGE.lock().unwrap() = aurora_forecast;
-        *ACE_SOLAR_WIND_IMAGE.lock().unwrap() = ace_solar_wind;
-        *DSCOVR_SOLAR_WIND_IMAGE.lock().unwrap() = dscovr_solar_wind;
-        *SPACE_WEATHER_OVERVIEW_IMAGE.lock().unwrap() = space_weather_overview;
-        *ACE_EPAM_IMAGE.lock().unwrap() = ace_epam;
-        *CANADIAN_MAGNETIC_IMAGE.lock().unwrap() = canadian_magnetic;
-        *ALERTS_TIMELINE_IMAGE.lock().unwrap() = alerts_timeline;
+                    // Store resized in global
+                    {
+                        *ALL_SKY_IMAGES.lock().unwrap() = resized_all_sky.clone();
+                    }
 
-        // Extract all-sky images from the struct
-        info!("Extracting all-sky images from struct...");
-        let all_sky_vec = vec![
-            all_sky_images_result.kjell_henriksen_observatory_norway,
-            all_sky_images_result.hankasalmi_finland,
-            all_sky_images_result.yellowknife_canada,
-            all_sky_images_result.athabasca_canada,
-            all_sky_images_result.glacier_national_park_usa,
-            all_sky_images_result.hansville_usa,
-            all_sky_images_result.isle_royale_national_park_usa,
-            all_sky_images_result.heiligenblut_austria,
-            all_sky_images_result.calgary_canada,
-            all_sky_images_result.hobart_australia,
-        ];
-        info!("All-sky vec created with {} images", all_sky_vec.len());
-        *ALL_SKY_IMAGES.lock().unwrap() = all_sky_vec;
-    }
-    info!("Images stored, now updating UI displays...");
+                    // Update UI in event loop - decode inside the closure
+                    slint::invoke_from_event_loop(move || {
+                        if let Some(window) = main_window_weak.upgrade() {
+                            let mut slint_images = Vec::new();
+                            let mut error_flags = Vec::new();
+                            for image_data in &resized_all_sky {
+                                if !image_data.is_empty() {
+                                    match decode_png_to_slint_image(image_data) {
+                                        Ok(slint_image) => {
+                                            slint_images.push(slint_image);
+                                            error_flags.push(false);
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to decode all-sky image: {}", e);
+                                            slint_images.push(slint::Image::default());
+                                            error_flags.push(true);
+                                        }
+                                    }
+                                } else {
+                                    slint_images.push(slint::Image::default());
+                                    error_flags.push(true);
+                                }
+                            }
 
-    // Update UI with images
-    info!("Starting UI updates...");
-    update_aurora_forecast_display(main_window);
-    info!("Updated aurora forecast display");
-    update_ace_solar_wind_display(main_window);
-    info!("Updated ACE solar wind display");
-    update_dscovr_solar_wind_display(main_window);
-    info!("Updated DSCOVR solar wind display");
-    update_space_weather_overview_display(main_window);
-    info!("Updated space weather overview display");
-    update_ace_epam_display(main_window);
-    info!("Updated ACE EPAM display");
-    update_canadian_magnetic_display(main_window);
-    info!("Updated Canadian magnetic display");
-    update_alerts_timeline_display(main_window);
-    info!("Updated alerts timeline display");
-    info!("Starting all-sky display update...");
-    update_all_sky_display(main_window);
-    info!("All UI updates completed");
+                            // Set the arrays
+                            window.set_aurora_all_sky_images(slint_images.as_slice().into());
+                            window.set_aurora_all_sky_errors(error_flags.as_slice().into());
+                            // Update current display
+                            update_all_sky_display(&window);
+                        }
+                    }).unwrap();
+                }
+                Err(e) => {
+                    error!("Failed to fetch All Sky Images: {}", e);
+                    slint::invoke_from_event_loop(move || {
+                        if let Some(window) = main_window_weak.upgrade() {
+                            *ALL_SKY_IMAGES.lock().unwrap() = vec![Vec::new(); 10];
+                            let default_images: Vec<slint::Image> = vec![slint::Image::default(); 10];
+                            let error_flags: Vec<bool> = vec![true; 10];
+                            window.set_aurora_all_sky_images(default_images.as_slice().into());
+                            window.set_aurora_all_sky_errors(error_flags.as_slice().into());
+                            update_all_sky_display(&window);
+                        }
+                    }).unwrap();
+                }
+            };
+        },
+    );
 
-    info!("Aurora images updated successfully");
+    info!("All Aurora images updated successfully");
     Ok(())
-}
-
-pub fn update_aurora_forecast_display(main_window: &MainWindow) {
-    let image_data = AURORA_FORECAST_IMAGE.lock().unwrap();
-    if !image_data.is_empty() {
-        match decode_png_to_slint_image(&image_data) {
-            Ok(slint_image) => {
-                main_window.set_aurora_forecast_image(slint_image);
-                main_window.set_aurora_forecast_error(false);
-            }
-            Err(e) => {
-                error!("Failed to decode Aurora forecast image: {}", e);
-                main_window.set_aurora_forecast_error(true);
-            }
-        }
-    } else {
-        main_window.set_aurora_forecast_error(true);
-    }
-}
-
-pub fn update_ace_solar_wind_display(main_window: &MainWindow) {
-    let image_data = ACE_SOLAR_WIND_IMAGE.lock().unwrap();
-    if !image_data.is_empty() {
-        match decode_png_to_slint_image(&image_data) {
-            Ok(slint_image) => {
-                main_window.set_aurora_ace_solar_wind_image(slint_image);
-                main_window.set_aurora_ace_solar_wind_error(false);
-            }
-            Err(e) => {
-                error!("Failed to decode ACE solar wind image: {}", e);
-                main_window.set_aurora_ace_solar_wind_error(true);
-            }
-        }
-    } else {
-        main_window.set_aurora_ace_solar_wind_error(true);
-    }
-}
-
-pub fn update_dscovr_solar_wind_display(main_window: &MainWindow) {
-    let image_data = DSCOVR_SOLAR_WIND_IMAGE.lock().unwrap();
-    if !image_data.is_empty() {
-        match decode_png_to_slint_image(&image_data) {
-            Ok(slint_image) => {
-                main_window.set_aurora_dscovr_solar_wind_image(slint_image);
-                main_window.set_aurora_dscovr_solar_wind_error(false);
-            }
-            Err(e) => {
-                error!("Failed to decode DSCOVR solar wind image: {}", e);
-                main_window.set_aurora_dscovr_solar_wind_error(true);
-            }
-        }
-    } else {
-        main_window.set_aurora_dscovr_solar_wind_error(true);
-    }
-}
-
-pub fn update_space_weather_overview_display(main_window: &MainWindow) {
-    let image_data = SPACE_WEATHER_OVERVIEW_IMAGE.lock().unwrap();
-    if !image_data.is_empty() {
-        match decode_png_to_slint_image(&image_data) {
-            Ok(slint_image) => {
-                main_window.set_aurora_space_weather_overview_image(slint_image);
-                main_window.set_aurora_space_weather_overview_error(false);
-            }
-            Err(e) => {
-                error!("Failed to decode space weather overview image: {}", e);
-                main_window.set_aurora_space_weather_overview_error(true);
-            }
-        }
-    } else {
-        main_window.set_aurora_space_weather_overview_error(true);
-    }
-}
-
-pub fn update_ace_epam_display(main_window: &MainWindow) {
-    let image_data = ACE_EPAM_IMAGE.lock().unwrap();
-    if !image_data.is_empty() {
-        match decode_png_to_slint_image(&image_data) {
-            Ok(slint_image) => {
-                main_window.set_aurora_ace_epam_image(slint_image);
-                main_window.set_aurora_ace_epam_error(false);
-            }
-            Err(e) => {
-                error!("Failed to decode ACE EPAM image: {}", e);
-                main_window.set_aurora_ace_epam_error(true);
-            }
-        }
-    } else {
-        main_window.set_aurora_ace_epam_error(true);
-    }
-}
-
-pub fn update_canadian_magnetic_display(main_window: &MainWindow) {
-    let image_data = CANADIAN_MAGNETIC_IMAGE.lock().unwrap();
-    if !image_data.is_empty() {
-        match decode_png_to_slint_image(&image_data) {
-            Ok(slint_image) => {
-                main_window.set_aurora_canadian_magnetic_image(slint_image);
-                main_window.set_aurora_canadian_magnetic_error(false);
-            }
-            Err(e) => {
-                error!("Failed to decode Canadian magnetic image: {}", e);
-                main_window.set_aurora_canadian_magnetic_error(true);
-            }
-        }
-    } else {
-        main_window.set_aurora_canadian_magnetic_error(true);
-    }
-}
-
-pub fn update_alerts_timeline_display(main_window: &MainWindow) {
-    let image_data = ALERTS_TIMELINE_IMAGE.lock().unwrap();
-    if !image_data.is_empty() {
-        match decode_png_to_slint_image(&image_data) {
-            Ok(slint_image) => {
-                main_window.set_aurora_alerts_timeline_image(slint_image);
-                main_window.set_aurora_alerts_timeline_error(false);
-            }
-            Err(e) => {
-                error!("Failed to decode alerts timeline image: {}", e);
-                main_window.set_aurora_alerts_timeline_error(true);
-            }
-        }
-    } else {
-        main_window.set_aurora_alerts_timeline_error(true);
-    }
 }
 
 pub fn update_all_sky_display(main_window: &MainWindow) {
@@ -549,60 +408,7 @@ pub fn update_all_sky_display(main_window: &MainWindow) {
     } else {
         info!("No Aurora all-sky images available for display ({} images, index {})", images.len(), *index);
     }
-
-    // Drop the locks before calling update_all_sky_images_display to avoid deadlock
-    drop(images);
-    drop(index);
-
-    // Also update the all-sky images array for the grid view
-    info!("Calling update_all_sky_images_display...");
-    update_all_sky_images_display(main_window);
     info!("update_all_sky_display completed");
-}
-
-pub fn update_all_sky_images_display(main_window: &MainWindow) {
-    info!("Starting update_all_sky_images_display...");
-    let images = ALL_SKY_IMAGES.lock().unwrap();
-    info!("Locked ALL_SKY_IMAGES for array display, {} images", images.len());
-
-    if !images.is_empty() {
-        let mut slint_images = Vec::new();
-        let mut error_flags = Vec::new();
-        info!("Starting to process {} all-sky images for array...", images.len());
-
-        for (i, image_data) in images.iter().enumerate() {
-            info!("Processing all-sky image {} of {}, data len: {}", i + 1, images.len(), image_data.len());
-            if !image_data.is_empty() {
-                info!("Image {} is not empty, starting decode_png_to_slint_image...", i);
-                match decode_png_to_slint_image(image_data) {
-                    Ok(slint_image) => {
-                        info!("Successfully decoded all-sky image {} for array", i);
-                        slint_images.push(slint_image);
-                        error_flags.push(false);
-                    }
-                    Err(e) => {
-                        error!("Failed to decode Aurora all-sky image {} for array: {}", i, e);
-                        // Add empty image to maintain array length
-                        slint_images.push(slint::Image::default());
-                        error_flags.push(true);
-                    }
-                }
-            } else {
-                info!("Image {} is empty, adding default image", i);
-                // Add empty image for missing data
-                slint_images.push(slint::Image::default());
-                error_flags.push(true);
-            }
-        }
-
-        info!("All {} images processed, now setting UI arrays...", slint_images.len());
-        main_window.set_aurora_all_sky_images(slint_images.as_slice().into());
-        main_window.set_aurora_all_sky_errors(error_flags.as_slice().into());
-        info!("Updated Aurora all-sky images array with {} images", slint_images.len());
-    } else {
-        info!("No Aurora all-sky images available for array display");
-    }
-    info!("update_all_sky_images_display completed");
 }
 
 fn start_refresh_countdown(main_window: &MainWindow) {
