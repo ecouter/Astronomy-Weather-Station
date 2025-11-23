@@ -8,7 +8,7 @@ pub async fn generate_gfs_sounding_async(lat: f64, lon: f64, output_file: Option
         // Get the path to the executable
         let exe_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("dist")
-            .join("create_sounding_gfs");
+            .join(format!("create_sounding_gfs{}", std::env::consts::EXE_SUFFIX));
 
         // Verify executable exists
         if !exe_path.exists() {

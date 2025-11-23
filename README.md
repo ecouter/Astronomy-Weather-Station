@@ -7,7 +7,7 @@
 ## Install dependencies:
 Install ``rustup``
 
-[Build SHARPpy (look at the readme)](api/SHARPpy/README.md)
+[Build SHARPpy](api/SHARPpy/README.md)
 
 ## Build the project
 
@@ -32,7 +32,14 @@ cargo build --release
 }
 ```
 ## Start
-**Optionnal arguments: ``RUST_LOG=``{debug or info}**
+**Optionnal arguments for more info: ``RUST_LOG=info``**
+
+**LINUX:**
 ```bash
 ./target/release/weather_frontend
+```
+
+**WINDOWS:**
+```bash
+target\release\weather_frontend.exe
 ```
