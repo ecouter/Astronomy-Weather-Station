@@ -59,6 +59,24 @@ pub async fn fetch_alerts_timeline() -> Result<Vec<u8>, anyhow::Error> {
     fetch_image(url).await
 }
 
+/// Fetch tonight's aurora forecast image
+pub async fn fetch_tonights_aurora_forecast() -> Result<Vec<u8>, anyhow::Error> {
+    let url = "https://services.swpc.noaa.gov/experimental/images/aurora_dashboard/tonights_static_viewline_forecast.png";
+    fetch_image(url).await
+}
+
+/// Fetch tomorrow night's aurora forecast image
+pub async fn fetch_tomorrow_aurora_forecast() -> Result<Vec<u8>, anyhow::Error> {
+    let url = "https://services.swpc.noaa.gov/experimental/images/aurora_dashboard/tomorrow_nights_static_viewline_forecast.png";
+    fetch_image(url).await
+}
+
+/// Fetch WSA-ENLIL prediction image
+pub async fn fetch_wsa_enlil() -> Result<Vec<u8>, anyhow::Error> {
+    let url = "https://services.swpc.noaa.gov/images/animations/enlil/latest.jpg";
+    fetch_image(url).await
+}
+
 /// Fetch all aurora all-sky images from various locations
 pub async fn fetch_all_aurora_images() -> Result<AuroraAllSkyImages, anyhow::Error> {
     // Generate dynamic URL for Heiligenblut, Austria (UTC+1, floored to nearest half-hour)
@@ -177,6 +195,30 @@ mod tests {
     #[tokio::test]
     async fn test_fetch_alerts_timeline() {
         let result = fetch_alerts_timeline().await;
+        assert!(result.is_ok());
+        let data = result.unwrap();
+        assert!(!data.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_fetch_tonights_aurora_forecast() {
+        let result = fetch_tonights_aurora_forecast().await;
+        assert!(result.is_ok());
+        let data = result.unwrap();
+        assert!(!data.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_fetch_tomorrow_aurora_forecast() {
+        let result = fetch_tomorrow_aurora_forecast().await;
+        assert!(result.is_ok());
+        let data = result.unwrap();
+        assert!(!data.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_fetch_wsa_enlil() {
+        let result = fetch_wsa_enlil().await;
         assert!(result.is_ok());
         let data = result.unwrap();
         assert!(!data.is_empty());

@@ -32,6 +32,12 @@ export component AuroraPage inherits Rectangle {
     in property <bool> dscovr_solar_wind_error: false;
     in property <bool> ace_epam_error: false;
     in property <bool> canadian_magnetic_error: false;
+    in property <image> tonights_forecast_image;
+    in property <bool> tonights_forecast_error: false;
+    in property <image> tomorrow_forecast_image;
+    in property <bool> tomorrow_forecast_error: false;
+    in property <image> wsa_enlil_image;
+    in property <bool> wsa_enlil_error: false;
     in property <[bool]> all_sky_errors: [];
     callback go_back();
     callback all_sky_previous();
@@ -81,7 +87,8 @@ export component AuroraPage inherits Rectangle {
             items: [
                 { text: "Dashboard" },
                 { text: "All Sky Cam" },
-                { text: "Advanced Space Weather" }
+                { text: "Advanced Space Weather" },
+                { text: "Predictions" }
             ];
             index-changed(index) => {
                 current_section = index;
@@ -394,6 +401,7 @@ export component AuroraPage inherits Rectangle {
             VerticalLayout {
                 HorizontalLayout {
                     spacing: 20px;
+                    height: 50%;
                 
                     // ACE solar wind
                     VerticalLayout {
@@ -492,7 +500,7 @@ export component AuroraPage inherits Rectangle {
                 HorizontalLayout {
                     VerticalLayout {
                         spacing: 10px;
-                        width: 600px;
+                        width: 420px;
                     
                         Text {
                             text: "ACE EPAM";
@@ -540,7 +548,7 @@ export component AuroraPage inherits Rectangle {
                     // Canadian magnetic
                     VerticalLayout {
                         spacing: 10px;
-                        width: 600px;
+                        width: 420px;
                     
                         Text {
                             height: 30px;
@@ -584,10 +592,163 @@ export component AuroraPage inherits Rectangle {
                             }
                         }
                     }
+
+                    // WSA-ENLIL Prediction
+                    VerticalLayout {
+                        spacing: 10px;
+                        width: 420px;
+
+                        Text {
+                            height: 30px;
+                            text: "WSA-ENLIL Prediction";
+                            color: #ffffff;
+                            font-size: 16px;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                        }
+
+                        TouchArea {
+                            Image {
+                                source: wsa_enlil_image;
+                                width: 100%;
+                                height: 100%;
+                                image-fit: contain;
+                            }
+                            clicked => {
+                                if (!wsa_enlil_error) {
+                                    zoomed_image = wsa_enlil_image;
+                                    zoomed_title = "WSA-ENLIL Prediction";
+                                    show_zoomed_image = true;
+                                }
+                            }
+                        }
+
+                        // Error overlay
+                        if (wsa_enlil_error): Rectangle {
+                            width: 300px;
+                            height: 250px;
+                            background: #000000;
+                            z: 10;
+
+                            Text {
+                                text: "IMAGE UNAVAILABLE";
+                                color: #ffffff;
+                                font-size: 20px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
                 }
             }
-        }   
-    }   
+        }
+
+        // Section 3: Predictions (Tonight's Aurora Forecast, Tomorrow Night's Aurora Forecast)
+        if current_section == 3: VerticalLayout {
+            spacing: 20px;
+
+            HorizontalLayout {
+                spacing: 20px;
+
+                // Tonight's Aurora Forecast
+                VerticalLayout {
+                    spacing: 10px;
+                    width: 600px;
+
+                    Text {
+                        text: "Tonight's Aurora Forecast";
+                        color: #ffffff;
+                        height: 30px;
+                        font-size: 18px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                    }
+
+                    TouchArea {
+                        Image {
+                            source: tonights_forecast_image;
+                            width: 100%;
+                            height: 100%;
+                            image-fit: contain;
+                        }
+                        clicked => {
+                            if (!tonights_forecast_error) {
+                                zoomed_image = tonights_forecast_image;
+                                zoomed_title = "Tonight's Aurora Forecast";
+                                show_zoomed_image = true;
+                            }
+                        }
+                    }
+
+                    // Error overlay
+                    if (tonights_forecast_error): Rectangle {
+                        width: 400px;
+                        height: 300px;
+                        background: #000000;
+                        z: 10;
+
+                        Text {
+                            text: "IMAGE UNAVAILABLE";
+                            color: #ffffff;
+                            font-size: 24px;
+                            font-weight: 700;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                // Tomorrow Night's Aurora Forecast
+                VerticalLayout {
+                    spacing: 10px;
+                    width: 600px;
+
+                    Text {
+                        text: "Tomorrow Night's Aurora Forecast";
+                        color: #ffffff;
+                        height: 30px;
+                        font-size: 18px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                    }
+
+                    TouchArea {
+                        Image {
+                            source: tomorrow_forecast_image;
+                            width: 100%;
+                            height: 100%;
+                            image-fit: contain;
+                        }
+                        clicked => {
+                            if (!tomorrow_forecast_error) {
+                                zoomed_image = tomorrow_forecast_image;
+                                zoomed_title = "Tomorrow Night's Aurora Forecast";
+                                show_zoomed_image = true;
+                            }
+                        }
+                    }
+
+                    // Error overlay
+                    if (tomorrow_forecast_error): Rectangle {
+                        width: 400px;
+                        height: 300px;
+                        background: #000000;
+                        z: 10;
+
+                        Text {
+                            text: "IMAGE UNAVAILABLE";
+                            color: #ffffff;
+                            font-size: 24px;
+                            font-weight: 700;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // Zoom overlay
     if show_zoomed_image: Rectangle {

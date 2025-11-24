@@ -141,6 +141,12 @@ export component MainWindow inherits Window {
     in property <bool> aurora_dscovr_solar_wind_error: false;
     in property <bool> aurora_ace_epam_error: false;
     in property <bool> aurora_canadian_magnetic_error: false;
+    in property <image> aurora_tonights_forecast_image;
+    in property <bool> aurora_tonights_forecast_error: false;
+    in property <image> aurora_tomorrow_forecast_image;
+    in property <bool> aurora_tomorrow_forecast_error: false;
+    in property <image> aurora_wsa_enlil_image;
+    in property <bool> aurora_wsa_enlil_error: false;
     in property <[bool]> aurora_all_sky_errors: [];
 
     // Precipitation page bindings
@@ -1257,6 +1263,12 @@ export component MainWindow inherits Window {
         dscovr_solar_wind_error: aurora_dscovr_solar_wind_error;
         ace_epam_error: aurora_ace_epam_error;
         canadian_magnetic_error: aurora_canadian_magnetic_error;
+        tonights_forecast_image: aurora_tonights_forecast_image;
+        tonights_forecast_error: aurora_tonights_forecast_error;
+        tomorrow_forecast_image: aurora_tomorrow_forecast_image;
+        tomorrow_forecast_error: aurora_tomorrow_forecast_error;
+        wsa_enlil_image: aurora_wsa_enlil_image;
+        wsa_enlil_error: aurora_wsa_enlil_error;
         all_sky_errors: aurora_all_sky_errors;
         go_back => { show_aurora = false; }
         all_sky_previous => { root.aurora_all_sky_previous(); }
