@@ -17,8 +17,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         // Example usage: default coordinates from the sample file
         info!("Usage: {} <latitude> <longitude>", args[0]);
-        info!("Using default coordinates (45.219N -73.111W)...");
-        (45.219, -73.111)
+        info!("Using default coordinates (45.50N -73.57W)...");
+        (45.50, -73.57)
     };
 
     info!("Fetching astronomy seeing data for {:.3}N {:.3}{}...",

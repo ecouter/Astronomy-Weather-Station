@@ -1,5 +1,5 @@
-# RaspberryPi-Astronomy-Weather-Station
- A RaspberryPi Weather Station and Observation planner made for Astronomy. 
+# Astronomy Weather Station
+ A RaspberryPi Weather Station and Observation planner made for Astronomy. Project is in pre-alpha, expect lots of changes to api, backend, and UI.
 
 
 # To Run the Program
@@ -43,3 +43,9 @@ cargo build --release
 ```bash
 target\release\weather_frontend.exe
 ```
+
+# DEBUG
+
+
+- **KNOWN BUG:** Background map image is not loading
+**Fix:** Create the ``images`` folder in frontend/ui/. This is where the map file is saved.
