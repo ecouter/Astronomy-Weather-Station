@@ -80,7 +80,7 @@ pub struct GuideStepsHistory {
     #[serde(rename = "RMS")]
     pub rms: RmsData,
     #[serde(rename = "Interval")]
-    pub interval: u32,
+    pub interval: f64,
     #[serde(rename = "MaxY")]
     pub max_y: i32,
     #[serde(rename = "MinY")]
@@ -399,6 +399,13 @@ where
                                         } else {
                                             debug!("Ignoring non-IMAGE-PREPARED event: {}", event.event);
                                         }
+                                        if event.event == "IMAGE-SAVE" {
+                                            info!("Received IMAGE-SAVE event from {}: {:?}", base_url, event);
+                                            on_image_prepared(event.clone());
+                                        } else {
+                                            debug!("Ignoring non-IMAGE-SAVE event: {}", event.event);
+                                        }
+                                        
                                     } else {
                                         debug!("Ignoring unsuccessful or non-socket message: success={}, type={}", nina_response.success, nina_response.r#type);
                                     }
@@ -406,11 +413,18 @@ where
                                     debug!("Failed to parse as NinaResponse<ImagePreparedEvent>, trying direct ImagePreparedEvent parsing");
                                     // Try parsing as direct ImagePreparedEvent (in case the wrapper isn't used for websockets)
                                     if let Ok(event) = serde_json::from_str::<ImagePreparedEvent>(&text) {
-                                        if event.event == "IMAGE-PREPARED" {
-                                            info!("Received IMAGE-PREPARED event from {} (direct parsing): {:?}", base_url, event);
-                                            on_image_prepared(event);
-                                        } else {
-                                            debug!("Ignoring non-IMAGE-PREPARED event (direct): {}", event.event);
+                                        match event.event.as_str() {
+                                            "IMAGE-PREPARED" => {
+                                                info!("Received IMAGE-PREPARED event from {} (direct parsing): {:?}", base_url, event);
+                                                on_image_prepared(event);
+                                            }
+                                            "IMAGE-SAVE" => {
+                                                info!("Received IMAGE-SAVE event from {} (direct parsing): {:?}", base_url, event);
+                                                on_image_prepared(event);
+                                            }
+                                            _ => {
+                                                debug!("Ignoring unknown event (direct): {}", event.event);
+                                            }
                                         }
                                     } else {
                                         debug!("Failed to parse websocket message as either NinaResponse<ImagePreparedEvent> or ImagePreparedEvent");

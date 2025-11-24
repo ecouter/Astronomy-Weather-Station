@@ -182,7 +182,7 @@ fn generate_example_graph() -> Result<(), Box<dyn std::error::Error>> {
     // Create the complete guide steps history
     let graph_data = GuideStepsHistory {
         rms,
-        interval: 1000, // 1 second intervals
+        interval: 1000.0, // 1 second intervals
         max_y: 4,
         min_y: -4,
         max_duration_y: 500,
