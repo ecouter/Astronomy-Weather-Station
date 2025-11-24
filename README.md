@@ -1,6 +1,8 @@
 # Astronomy Weather Station
  A RaspberryPi Weather Station and Observation planner made for Astronomy. Project is in pre-alpha, expect lots of changes to api, backend, and UI.
 
+# Issues, suggestions or comments:
+We appreciate any feedback on the application, we cannot test everything ourselves and any help debugging is very much appreciated. To contribute in this way, please open an issue.
 
 # To Run the Program
 
