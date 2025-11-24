@@ -50,6 +50,14 @@ fn main() -> Result<(), slint::PlatformError> {
     app::precipitation::setup_precipitation_callbacks(&main_window);
     app::aurora::setup_aurora_callbacks(&main_window);
 
+    // Initialize NINA image update channel
+    {
+        let (sender, receiver) = mpsc::channel();
+        *app::nina::NINA_IMAGE_UPDATE_SENDER.lock().unwrap() = Some(sender);
+        *app::nina::NINA_IMAGE_UPDATE_CHANNEL.lock().unwrap() = Some(receiver);
+        info!("Initialized NINA image update channel");
+    }
+
     // Set up NINA URL change callback handler
     let main_window_weak_nina = main_window.as_weak();
     main_window.on_nina_url_saved(move |index| {
@@ -86,6 +94,42 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         }).unwrap();
     });
+
+    // Handle NINA image update signals
+    {
+        let main_window_weak = main_window.as_weak();
+        let _nina_image_update_handle = thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            info!("NINA image update handler thread started");
+            while let Some(receiver) = app::nina::NINA_IMAGE_UPDATE_CHANNEL.lock().unwrap().as_ref() {
+                if let Ok((slot_index, base_url)) = receiver.recv() {
+                    info!("Processing NINA image update for slot {} from {}", slot_index + 1, base_url);
+                    let window_weak = main_window_weak.clone();
+                    let base_url_clone = base_url.clone();
+
+                    // Use invoke_from_event_loop to update UI in the UI thread
+                    if let Err(e) = slint::invoke_from_event_loop(move || {
+                        let window_opt = window_weak.upgrade();
+                        if let Some(window) = window_opt {
+                            // Spawn a runtime just for this operation
+                            let rt = tokio::runtime::Runtime::new().unwrap();
+                            rt.block_on(async move {
+                                if let Err(e) = app::nina::update_single_nina_image(&window, slot_index, &base_url_clone).await {
+                                    error!("Failed to update NINA image for slot {}: {}", slot_index + 1, e);
+                                }
+                            });
+                        }
+                    }) {
+                        warn!("Failed to invoke NINA image update for slot {}: {}", slot_index + 1, e);
+                    }
+                } else {
+                    // Channel closed, exit thread
+                    break;
+                }
+            }
+            info!("NINA image update handler thread ended");
+        });
+    }
 
     main_window.set_loading(false); // Show UI immediately, loading happens asynchronously
 

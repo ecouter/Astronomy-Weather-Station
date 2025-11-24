@@ -63,9 +63,10 @@ pub enum PrecipitationLayer {
     IcePelletsCondAmt = 23,
     AirTemp = 24,
     DewPointTemp = 25,
-    BlowingSnowPresence = 26,
-    IceFogVisibility = 27,
-    TotalPrecipIntensityIndex = 28,
+    RelativeHumidity = 26,
+    BlowingSnowPresence = 27,
+    IceFogVisibility = 28,
+    TotalPrecipIntensityIndex = 29,
 }
 
 // Cache keys (model, layer, hour_index)
@@ -426,6 +427,7 @@ async fn preload_model_core(
         (PrecipitationModel::Hrdps, PrecipitationLayer::IcePelletsCondAmt) => ("HRDPS-WEonG_2.5km_IcePelletsCondAmt", Some("IcePelletsCondAmt")),
         (PrecipitationModel::Hrdps, PrecipitationLayer::AirTemp) => ("HRDPS-WEonG_2.5km_AirTemp", Some("TEMPERATURE-LINEAR")),
         (PrecipitationModel::Hrdps, PrecipitationLayer::DewPointTemp) => ("HRDPS-WEonG_2.5km_DewPointTemp", Some("DEWPOINT")),
+        (PrecipitationModel::Hrdps, PrecipitationLayer::RelativeHumidity) => ("HRDPS.CONTINENTAL_HR", Some("RelativeHumidity_0to100Pct")),
         (PrecipitationModel::Hrdps, PrecipitationLayer::BlowingSnowPresence) => ("HRDPS-WEonG_2.5km_BlowingSnowPresence", Some("BlowingSnowPresence_Dis")),
         (PrecipitationModel::Hrdps, PrecipitationLayer::IceFogVisibility) => ("HRDPS-WEonG_2.5km_IceFogVisibility", Some("IceFogVisibility_Dis")),
         (PrecipitationModel::Hrdps, PrecipitationLayer::TotalPrecipIntensityIndex) => ("HRDPS-WEonG_2.5km_TotalPrecipIntensityIndex", Some("TotalPrecipIntensityIndex_Dis")),
@@ -453,6 +455,7 @@ async fn preload_model_core(
         (PrecipitationModel::Rdps, PrecipitationLayer::IcePelletsCondAmt) => ("RDPS-WEonG_10km_IcePelletsCondAmt", Some("IcePelletsCondAmt")),
         (PrecipitationModel::Rdps, PrecipitationLayer::AirTemp) => ("RDPS-WEonG_10km_AirTemp", Some("TEMPERATURE-LINEAR")),
         (PrecipitationModel::Rdps, PrecipitationLayer::DewPointTemp) => ("RDPS-WEonG_10km_DewPointTemp", Some("DEWPOINT")),
+        (PrecipitationModel::Rdps, PrecipitationLayer::RelativeHumidity) => ("RDPS.ETA_HR", Some("RelativeHumidity_0to100Pct")),
         (PrecipitationModel::Rdps, PrecipitationLayer::BlowingSnowPresence) => ("RDPS-WEonG_10km_BlowingSnowPresence", Some("BlowingSnowPresence_Dis")),
         (PrecipitationModel::Rdps, PrecipitationLayer::IceFogVisibility) => ("RDPS-WEonG_10km_IceFogVisibility", Some("IceFogVisibility_Dis")),
         (PrecipitationModel::Rdps, PrecipitationLayer::TotalPrecipIntensityIndex) => ("RDPS-WEonG_10km_TotalPrecipIntensityIndex", Some("TotalPrecipIntensityIndex_Dis")),
@@ -660,6 +663,7 @@ pub fn update_precipitation_display(win: &MainWindow) {
         PrecipitationLayer::IcePelletsCondAmt => "Ice Pellets Amount",
         PrecipitationLayer::AirTemp => "Air Temperature",
         PrecipitationLayer::DewPointTemp => "Dew Point Temp",
+        PrecipitationLayer::RelativeHumidity => "Relative Humidity",
         PrecipitationLayer::BlowingSnowPresence => "Blowing Snow Presence",
         PrecipitationLayer::IceFogVisibility => "Ice Fog Visibility",
         PrecipitationLayer::TotalPrecipIntensityIndex => "Precip Intensity Index",
@@ -1121,6 +1125,7 @@ fn update_active_layer_from_category_and_sublayer(win: &MainWindow) {
         (PrecipitationCategory::PrecipitationAmount, 3) => PrecipitationLayer::IcePelletsCondAmt,
         (PrecipitationCategory::Temperature, 0) => PrecipitationLayer::AirTemp,
         (PrecipitationCategory::Temperature, 1) => PrecipitationLayer::DewPointTemp,
+        (PrecipitationCategory::Temperature, 2) => PrecipitationLayer::RelativeHumidity,
         (PrecipitationCategory::Snow, 0) => PrecipitationLayer::SnowDepth,
         (PrecipitationCategory::Snow, 1) => PrecipitationLayer::BlowingSnowPresence,
         (PrecipitationCategory::Visibility, 0) => PrecipitationLayer::IceFogVisibility,
@@ -1259,6 +1264,12 @@ fn generate_layer_dropdown_items(category: PrecipitationCategory) -> Vec<MenuIte
                 trailing_text: "".into(),
                 enabled: true,
             },
+            MenuItem {
+                icon: slint::Image::default(),
+                text: "Relative Humidity".into(),
+                trailing_text: "".into(),
+                enabled: true,
+            }
         ],
         PrecipitationCategory::Snow => vec![
             MenuItem {

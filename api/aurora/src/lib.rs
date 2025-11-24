@@ -49,7 +49,7 @@ pub async fn fetch_ace_epam() -> Result<Vec<u8>, anyhow::Error> {
 
 /// Fetch Canadian magnetic observatories image
 pub async fn fetch_canadian_magnetic() -> Result<Vec<u8>, anyhow::Error> {
-    let url = "https://www.spaceweather.gc.ca/auto_generated_products/stackplot_e.png";
+    let url = "https://www.spaceweather.gc.ca/generated_plots/summary/plots/stackplot_e.png";
     fetch_image(url).await
 }
 

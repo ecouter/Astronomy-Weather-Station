@@ -19,8 +19,16 @@ pub static NINA_GUIDING_THREADS: Lazy<Mutex<Vec<Option<(std::thread::JoinHandle<
     Mutex::new(vec)
 });
 
+// Channel for websocket image update signals
+pub static NINA_IMAGE_UPDATE_CHANNEL: Lazy<Mutex<Option<std::sync::mpsc::Receiver<(usize, String)>>>> = Lazy::new(|| {
+    Mutex::new(None)
+});
+pub static NINA_IMAGE_UPDATE_SENDER: Lazy<Mutex<Option<std::sync::mpsc::Sender<(usize, String)>>>> = Lazy::new(|| {
+    Mutex::new(None)
+});
+
 /// Fetch and update a single NINA image for the given slot
-async fn update_single_nina_image(main_window: &MainWindow, slot_index: usize, base_url: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn update_single_nina_image(main_window: &MainWindow, slot_index: usize, base_url: &str) -> Result<(), Box<dyn std::error::Error>> {
     use nina::{fetch_prepared_image, PreparedImageParams};
 
     info!("Starting image update for NINA slot {} from URL: {}", slot_index + 1, base_url);
@@ -214,23 +222,14 @@ pub fn start_nina_websocket(slot_index: usize, base_url: String, main_window: &M
               slot_index + 1,
               event.event);
 
-        // Update UI via slint's event loop - spawn the async operation on a separate thread
-        // to avoid nested runtime issues
-        let main_window_weak = main_window_weak.clone();
-        let base_url = base_url_clone.clone();
-        std::thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                let window_opt = main_window_weak.upgrade();
-                if let Some(window) = window_opt {
-                    if let Err(e) = update_single_nina_image(&window, slot_index, &base_url).await {
-                        error!("Failed to update NINA image for slot {}: {}", slot_index + 1, e);
-                    }
-                } else {
-                    warn!("Failed to upgrade main window weak reference for slot {}", slot_index + 1);
-                }
-            });
-        });
+        // Send signal to the image update channel
+        if let Some(sender) = NINA_IMAGE_UPDATE_SENDER.lock().unwrap().as_ref() {
+            if let Err(e) = sender.send((slot_index, base_url_clone.clone())) {
+                warn!("Failed to send image update signal for slot {}: {}", slot_index + 1, e);
+            }
+        } else {
+            warn!("No image update sender available for slot {}", slot_index + 1);
+        }
     };
 
     // Spawn the websocket listener
