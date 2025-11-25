@@ -47,7 +47,3 @@ target\release\weather_frontend.exe
 ```
 
 # DEBUG
-
-
-- **KNOWN BUG:** Background map image is not loading
-**Fix:** Create the ``images`` folder in frontend/ui/. This is where the map file is saved.
