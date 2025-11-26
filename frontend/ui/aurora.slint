@@ -5,8 +5,8 @@ import { Icons } from "../../material-1.0/ui/icons/icons.slint";
 
 export component AuroraPage inherits Rectangle {
     background: #1c1c1c;
-    height: 720px;
-    width: 1280px;
+    height: 100%;
+    width: 100%;
     in property <image> aurora_forecast_image;
     in property <image> ace_solar_wind_image;
     in property <image> dscovr_solar_wind_image;
@@ -105,7 +105,7 @@ export component AuroraPage inherits Rectangle {
                 // Aurora forecast
                 VerticalLayout {
                     spacing: 10px;
-                    width: 500px;
+                    width: root.width * 0.390625;
 
                     Text {
                         text: "Aurora Forecast - Northern Hemisphere";
@@ -134,7 +134,7 @@ export component AuroraPage inherits Rectangle {
 
                     // Error overlay
                     if (aurora_forecast_error): Rectangle {
-                        width: 400px;
+                        width: root.width * 0.3125;
                         height: 300px;
                         background: #000000;
                         z: 10;
@@ -153,7 +153,7 @@ export component AuroraPage inherits Rectangle {
                 // Space weather overview
                 VerticalLayout {
                     spacing: 10px;
-                    width: 350px;
+                    width: root.width * 0.2734375;
 
                     Text {
                         text: "Space Weather Overview";
@@ -182,7 +182,7 @@ export component AuroraPage inherits Rectangle {
 
                     // Error overlay
                     if (space_weather_overview_error): Rectangle {
-                        width: 400px;
+                        width: root.width * 0.3125;
                         height: 300px;
                         background: #000000;
                         z: 10;
@@ -201,7 +201,7 @@ export component AuroraPage inherits Rectangle {
                 // Alerts timeline
                 VerticalLayout {
                     spacing: 10px;
-                    width: 400px;
+                    width: root.width * 0.3125;
 
                     Text {
                         text: "Space Weather Alerts Timeline";
@@ -230,7 +230,7 @@ export component AuroraPage inherits Rectangle {
 
                     // Error overlay
                     if (alerts_timeline_error): Rectangle {
-                        width: 400px;
+                        width: root.width * 0.3125;
                         height: 300px;
                         background: #000000;
                         z: 10;
@@ -269,7 +269,7 @@ export component AuroraPage inherits Rectangle {
                     spacing: 10px;
                     for i in 5: VerticalLayout {
                         spacing: 5px;
-                        width: 240px;
+                        width: root.width * 0.1875;
 
                         Text {
                             text: [
@@ -286,7 +286,7 @@ export component AuroraPage inherits Rectangle {
                         }
 
                         TouchArea {
-                            width: 240px;
+                            width: root.width * 0.1875;
                             height: 180px;
                             Image {
                                 source: all_sky_images.length > i ? all_sky_images[i] : @image-url("");
@@ -311,7 +311,7 @@ export component AuroraPage inherits Rectangle {
 
                         // Error overlay
                         if (all_sky_errors.length > i && all_sky_errors[i]): Rectangle {
-                            width: 240px;
+                            width: root.width * 0.1875;
                             height: 180px;
                             background: #000000;
                             z: 10;
@@ -333,7 +333,7 @@ export component AuroraPage inherits Rectangle {
                     spacing: 10px;
                     for i in 5: VerticalLayout {
                         spacing: 5px;
-                        width: 240px;
+                        width: root.width * 0.1875;
 
                         Text {
                             text: [
@@ -350,7 +350,7 @@ export component AuroraPage inherits Rectangle {
                         }
 
                         TouchArea {
-                            width: 240px;
+                            width: root.width * 0.1875;
                             height: 180px;
                             Image {
                                 source: all_sky_images.length > (i + 5) ? all_sky_images[i + 5] : @image-url("");
@@ -375,7 +375,7 @@ export component AuroraPage inherits Rectangle {
 
                         // Error overlay
                         if (all_sky_errors.length > (i + 5) && all_sky_errors[i + 5]): Rectangle {
-                            width: 240px;
+                            width: root.width * 0.1875;
                             height: 180px;
                             background: #000000;
                             z: 10;
@@ -683,7 +683,7 @@ export component AuroraPage inherits Rectangle {
 
                     // Error overlay
                     if (tonights_forecast_error): Rectangle {
-                        width: 400px;
+                        width: root.width * 0.3125;
                         height: 300px;
                         background: #000000;
                         z: 10;
@@ -731,7 +731,7 @@ export component AuroraPage inherits Rectangle {
 
                     // Error overlay
                     if (tomorrow_forecast_error): Rectangle {
-                        width: 400px;
+                        width: root.width * 0.3125;
                         height: 300px;
                         background: #000000;
                         z: 10;
