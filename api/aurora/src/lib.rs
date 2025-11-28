@@ -127,7 +127,14 @@ pub async fn fetch_all_aurora_images() -> Result<AuroraAllSkyImages, anyhow::Err
 async fn fetch_image(url: &str) -> Result<Vec<u8>, anyhow::Error> {
     info!("Fetching image from: {}", url);
 
-    let client = reqwest::Client::builder().build()?;
+    // Use a client that accepts invalid certificates for spaceweather.gc.ca due to certificate issues
+    let client = if url.contains("spaceweather.gc.ca") {
+        reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()?
+    } else {
+        reqwest::Client::builder().build()?
+    };
     let response = client.get(url).send().await?;
 
     if !response.status().is_success() {

@@ -294,7 +294,7 @@ export component MainWindow inherits Window {
 
             // Cloud cover section
             TouchArea {
-                height: (parent.height - 50px) * 0.4; // Account for fixed navigation height
+                height: (parent.height - 50px) * 0.28; // Account for fixed navigation height
 
                 Rectangle {
                     width: 100%;
@@ -376,9 +376,272 @@ export component MainWindow inherits Window {
                 }
             }
 
+            // ClearOutside conditions display - one row per astronomical night
+            Rectangle {
+                height: (parent.height - 50px) * 0.25;
+
+                VerticalLayout {
+                    Rectangle {
+                        Text {
+                            text: "Clearoutside prediction for the next nights (night0 = current)";
+                            color: #ffffff;
+                            font-size: 12px;
+                            font-weight: 800;
+                            width: 100%;
+                            horizontal-alignment: center;
+                        }
+                    }
+                    // Night 0
+                    HorizontalLayout {
+                        Text {
+                            text: "Night 0";
+                            color: #ffffff;
+                            font-size: 10px;
+                            font-weight: 400;
+                            width: 60px;
+                            horizontal-alignment: left;
+                        }
+                        for i in day0_hours.length : Text {
+                            text: day0_hours[i];
+                            color: #ffffff;
+                            font-size: 10px;
+                            horizontal-alignment: center;
+                            width: 25px;
+                        }
+                    }
+                    HorizontalLayout {
+                        Rectangle { width: 60px; } // Spacer for label
+                        for i in day0_conditions.length : Rectangle {
+                            width: 25px;
+                            height: 12px;
+                            background: day0_conditions[i] == "bad" ? #ff0000 : day0_conditions[i] == "ok" ? #ffff00 : #00ff00;
+                            border-radius: 2px;
+
+                            Text {
+                                text: day0_clouds[i];
+                                color: #000000;
+                                font-size: 10px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                    // Night 1
+                    HorizontalLayout {
+                        Text {
+                            text: "Night 1";
+                            color: #ffffff;
+                            font-size: 10px;
+                            font-weight: 400;
+                            width: 60px;
+                            horizontal-alignment: left;
+                        }
+                        for i in day1_hours.length : Text {
+                            text: day1_hours[i];
+                            color: #ffffff;
+                            font-size: 10px;
+                            horizontal-alignment: center;
+                            width: 25px;
+                        }
+                    }
+                    HorizontalLayout {
+                        Rectangle { width: 60px; } // Spacer for label
+                        for i in day1_conditions.length : Rectangle {
+                            width: 25px;
+                            height: 12px;
+                            background: day1_conditions[i] == "bad" ? #ff0000 : day1_conditions[i] == "ok" ? #ffff00 : #00ff00;
+                            border-radius: 2px;
+
+                            Text {
+                                text: day1_clouds[i];
+                                color: #000000;
+                                font-size: 10px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                    // Night 2
+                    HorizontalLayout {
+                        Text {
+                            text: "Night 2";
+                            color: #ffffff;
+                            font-size: 10px;
+                            font-weight: 400;
+                            width: 60px;
+                            horizontal-alignment: left;
+                        }
+                        for i in day2_hours.length : Text {
+                            text: day2_hours[i];
+                            color: #ffffff;
+                            font-size: 10px;
+                            horizontal-alignment: center;
+                            width: 25px;
+                        }
+                    }
+                    HorizontalLayout {
+                        Rectangle { width: 60px; } // Spacer for label
+                        for i in day2_conditions.length : Rectangle {
+                            width: 25px;
+                            height: 12px;
+                            background: day2_conditions[i] == "bad" ? #ff0000 : day2_conditions[i] == "ok" ? #ffff00 : #00ff00;
+                            border-radius: 2px;
+
+                            Text {
+                                text: day2_clouds[i];
+                                color: #000000;
+                                font-size: 10px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                    // Night 3
+                    HorizontalLayout {
+                        Text {
+                            text: "Night 3";
+                            color: #ffffff;
+                            font-size: 10px;
+                            font-weight: 400;
+                            width: 60px;
+                            horizontal-alignment: left;
+                        }
+                        for i in day3_hours.length : Text {
+                            text: day3_hours[i];
+                            color: #ffffff;
+                            font-size: 10px;
+                            horizontal-alignment: center;
+                            width: 25px;
+                        }
+                    }
+                    HorizontalLayout {
+                        Rectangle { width: 60px; } // Spacer for label
+                        for i in day3_conditions.length : Rectangle {
+                            width: 25px;
+                            height: 12px;
+                            background: day3_conditions[i] == "bad" ? #ff0000 : day3_conditions[i] == "ok" ? #ffff00 : #00ff00;
+                            border-radius: 2px;
+
+                            Text {
+                                text: day3_clouds[i];
+                                color: #000000;
+                                font-size: 10px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                    // Night 4
+                    HorizontalLayout {
+                        Text {
+                            text: "Night 4";
+                            color: #ffffff;
+                            font-size: 10px;
+                            font-weight: 400;
+                            width: 60px;
+                            horizontal-alignment: left;
+                        }
+                        for i in day4_hours.length : Text {
+                            text: day4_hours[i];
+                            color: #ffffff;
+                            font-size: 10px;
+                            horizontal-alignment: center;
+                            width: 15px;
+                        }
+                    }
+                    HorizontalLayout {
+                        Rectangle { width: 60px; } // Spacer for label
+                        for i in day4_conditions.length : Rectangle {
+                            width: 25px;
+                            height: 12px;
+                            background: day4_conditions[i] == "bad" ? #ff0000 : day4_conditions[i] == "ok" ? #ffff00 : #00ff00;
+                            border-radius: 2px;
+
+                            Text {
+                                text: day4_clouds[i];
+                                color: #000000;
+                                font-size: 10px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                    // Night 5
+                    HorizontalLayout {
+                        Text {
+                            text: "Night 5";
+                            color: #ffffff;
+                            font-size: 10px;
+                            font-weight: 400;
+                            width: 60px;
+                            horizontal-alignment: left;
+                        }
+                        for i in day5_hours.length : Text {
+                            text: day5_hours[i];
+                            color: #ffffff;
+                            font-size: 10px;
+                            horizontal-alignment: center;
+                            width: 15px;
+                        }
+                    }
+                    HorizontalLayout {
+                        Rectangle { width: 60px; } // Spacer for label
+                        for i in day5_conditions.length : Rectangle {
+                            width: 25px;
+                            height: 12px;
+                            background: day5_conditions[i] == "bad" ? #ff0000 : day5_conditions[i] == "ok" ? #ffff00 : #00ff00;
+                            border-radius: 2px;
+
+                            Text {
+                                text: day5_clouds[i];
+                                color: #000000;
+                                font-size: 10px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                    // Night 6
+                    HorizontalLayout {
+                        Text {
+                            text: "Night 6";
+                            color: #ffffff;
+                            font-size: 10px;
+                            font-weight: 400;
+                            width: 60px;
+                            horizontal-alignment: left;
+                        }
+                        for i in day6_hours.length : Text {
+                            text: day6_hours[i];
+                            color: #ffffff;
+                            font-size: 10px;
+                            horizontal-alignment: center;
+                            width: 15px;
+                        }
+                    }
+                    HorizontalLayout {
+                        Rectangle { width: 60px; } // Spacer for label
+                        for i in day6_conditions.length : Rectangle {
+                            width: 25px;
+                            height: 12px;
+                            background: day6_conditions[i] == "bad" ? #ff0000 : day6_conditions[i] == "ok" ? #ffff00 : #00ff00;
+                            border-radius: 2px;
+
+                            Text {
+                                text: day6_clouds[i];
+                                color: #000000;
+                                font-size: 10px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+
             // MeteoBlue Night overview section
             Rectangle {
-                height: (parent.height - 50px) * 0.35;
+                height: (parent.height - 50px) * 0.33;
 
                 VerticalLayout {
                     Rectangle {
@@ -428,269 +691,6 @@ export component MainWindow inherits Window {
                             Text { text: Math.round(night_bad_layers_k[row_idx] * 100) / 100; color: #ffffff; font-size: 8px; width: 25px; horizontal-alignment: center; }
                             Text { text: Math.round(night_temp[row_idx] * 10) / 10; color: #ffffff; font-size: 8px; width: 30px; horizontal-alignment: center; }
                             Text { text: night_humidity[row_idx]; color: #ffffff; font-size: 8px; width: 35px; horizontal-alignment: center; }
-                        }
-                    }
-                }
-            }
-
-            // ClearOutside conditions display - one row per astronomical night
-            Rectangle {
-                height: (parent.height - 50px) * 0.25;
-
-                VerticalLayout {
-                    Rectangle {
-                        Text {
-                            text: "Clearoutside prediction for the next nights (night0 = current)";
-                            color: #ffffff;
-                            font-size: 12px;
-                            font-weight: 800;
-                            width: 100%;
-                            horizontal-alignment: center;
-                        }
-                    }
-                    // Night 0
-                    HorizontalLayout {
-                        Text {
-                            text: "Night 0";
-                            color: #ffffff;
-                            font-size: 10px;
-                            font-weight: 400;
-                            width: 60px;
-                            horizontal-alignment: left;
-                        }
-                        for i in day0_hours.length : Text {
-                            text: day0_hours[i];
-                            color: #ffffff;
-                            font-size: 10px;
-                            horizontal-alignment: center;
-                            width: 15px;
-                        }
-                    }
-                    HorizontalLayout {
-                        Rectangle { width: 60px; } // Spacer for label
-                        for i in day0_conditions.length : Rectangle {
-                            width: 15px;
-                            height: 12px;
-                            background: day0_conditions[i] == "bad" ? #ff0000 : day0_conditions[i] == "ok" ? #ffff00 : #00ff00;
-                            border-radius: 2px;
-
-                            Text {
-                                text: day0_clouds[i];
-                                color: #000000;
-                                font-size: 10px;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                        }
-                    }
-                    // Night 1
-                    HorizontalLayout {
-                        Text {
-                            text: "Night 1";
-                            color: #ffffff;
-                            font-size: 10px;
-                            font-weight: 400;
-                            width: 60px;
-                            horizontal-alignment: left;
-                        }
-                        for i in day1_hours.length : Text {
-                            text: day1_hours[i];
-                            color: #ffffff;
-                            font-size: 10px;
-                            horizontal-alignment: center;
-                            width: 15px;
-                        }
-                    }
-                    HorizontalLayout {
-                        Rectangle { width: 60px; } // Spacer for label
-                        for i in day1_conditions.length : Rectangle {
-                            width: 15px;
-                            height: 12px;
-                            background: day1_conditions[i] == "bad" ? #ff0000 : day1_conditions[i] == "ok" ? #ffff00 : #00ff00;
-                            border-radius: 2px;
-
-                            Text {
-                                text: day1_clouds[i];
-                                color: #000000;
-                                font-size: 10px;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                        }
-                    }
-                    // Night 2
-                    HorizontalLayout {
-                        Text {
-                            text: "Night 2";
-                            color: #ffffff;
-                            font-size: 10px;
-                            font-weight: 400;
-                            width: 60px;
-                            horizontal-alignment: left;
-                        }
-                        for i in day2_hours.length : Text {
-                            text: day2_hours[i];
-                            color: #ffffff;
-                            font-size: 10px;
-                            horizontal-alignment: center;
-                            width: 15px;
-                        }
-                    }
-                    HorizontalLayout {
-                        Rectangle { width: 60px; } // Spacer for label
-                        for i in day2_conditions.length : Rectangle {
-                            width: 15px;
-                            height: 12px;
-                            background: day2_conditions[i] == "bad" ? #ff0000 : day2_conditions[i] == "ok" ? #ffff00 : #00ff00;
-                            border-radius: 2px;
-
-                            Text {
-                                text: day2_clouds[i];
-                                color: #000000;
-                                font-size: 10px;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                        }
-                    }
-                    // Night 3
-                    HorizontalLayout {
-                        Text {
-                            text: "Night 3";
-                            color: #ffffff;
-                            font-size: 10px;
-                            font-weight: 400;
-                            width: 60px;
-                            horizontal-alignment: left;
-                        }
-                        for i in day3_hours.length : Text {
-                            text: day3_hours[i];
-                            color: #ffffff;
-                            font-size: 10px;
-                            horizontal-alignment: center;
-                            width: 15px;
-                        }
-                    }
-                    HorizontalLayout {
-                        Rectangle { width: 60px; } // Spacer for label
-                        for i in day3_conditions.length : Rectangle {
-                            width: 15px;
-                            height: 12px;
-                            background: day3_conditions[i] == "bad" ? #ff0000 : day3_conditions[i] == "ok" ? #ffff00 : #00ff00;
-                            border-radius: 2px;
-
-                            Text {
-                                text: day3_clouds[i];
-                                color: #000000;
-                                font-size: 10px;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                        }
-                    }
-                    // Night 4
-                    HorizontalLayout {
-                        Text {
-                            text: "Night 4";
-                            color: #ffffff;
-                            font-size: 10px;
-                            font-weight: 400;
-                            width: 60px;
-                            horizontal-alignment: left;
-                        }
-                        for i in day4_hours.length : Text {
-                            text: day4_hours[i];
-                            color: #ffffff;
-                            font-size: 10px;
-                            horizontal-alignment: center;
-                            width: 15px;
-                        }
-                    }
-                    HorizontalLayout {
-                        Rectangle { width: 60px; } // Spacer for label
-                        for i in day4_conditions.length : Rectangle {
-                            width: 15px;
-                            height: 12px;
-                            background: day4_conditions[i] == "bad" ? #ff0000 : day4_conditions[i] == "ok" ? #ffff00 : #00ff00;
-                            border-radius: 2px;
-
-                            Text {
-                                text: day4_clouds[i];
-                                color: #000000;
-                                font-size: 10px;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                        }
-                    }
-                    // Night 5
-                    HorizontalLayout {
-                        Text {
-                            text: "Night 5";
-                            color: #ffffff;
-                            font-size: 10px;
-                            font-weight: 400;
-                            width: 60px;
-                            horizontal-alignment: left;
-                        }
-                        for i in day5_hours.length : Text {
-                            text: day5_hours[i];
-                            color: #ffffff;
-                            font-size: 10px;
-                            horizontal-alignment: center;
-                            width: 15px;
-                        }
-                    }
-                    HorizontalLayout {
-                        Rectangle { width: 60px; } // Spacer for label
-                        for i in day5_conditions.length : Rectangle {
-                            width: 15px;
-                            height: 12px;
-                            background: day5_conditions[i] == "bad" ? #ff0000 : day5_conditions[i] == "ok" ? #ffff00 : #00ff00;
-                            border-radius: 2px;
-
-                            Text {
-                                text: day5_clouds[i];
-                                color: #000000;
-                                font-size: 10px;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                        }
-                    }
-                    // Night 6
-                    HorizontalLayout {
-                        Text {
-                            text: "Night 6";
-                            color: #ffffff;
-                            font-size: 10px;
-                            font-weight: 400;
-                            width: 60px;
-                            horizontal-alignment: left;
-                        }
-                        for i in day6_hours.length : Text {
-                            text: day6_hours[i];
-                            color: #ffffff;
-                            font-size: 10px;
-                            horizontal-alignment: center;
-                            width: 15px;
-                        }
-                    }
-                    HorizontalLayout {
-                        Rectangle { width: 60px; } // Spacer for label
-                        for i in day6_conditions.length : Rectangle {
-                            width: 15px;
-                            height: 12px;
-                            background: day6_conditions[i] == "bad" ? #ff0000 : day6_conditions[i] == "ok" ? #ffff00 : #00ff00;
-                            border-radius: 2px;
-
-                            Text {
-                                text: day6_clouds[i];
-                                color: #000000;
-                                font-size: 10px;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
                         }
                     }
                 }
@@ -749,7 +749,7 @@ export component MainWindow inherits Window {
 
             // Top 2/3: 2x2 grid of weather images
             VerticalBox {
-                height: parent.height * 0.75; // Proportional to parent container height
+                height: parent.height * 0.60; // Proportional to parent container height
 
                 // Top row
                 HorizontalBox {
@@ -757,7 +757,7 @@ export component MainWindow inherits Window {
 
                     // Top-left: GOES-East_1km_VisibleIRSandwich-NightMicrophysicsIR
                     Rectangle {
-                        width: 50%;
+                        width: 45%;
 
                         if (loading) : Text {
                             text: "Loading...";
@@ -801,7 +801,7 @@ export component MainWindow inherits Window {
 
                     // Top-right: Wind pressure visualization
                     TouchArea {
-                        width: 50%;
+                        width: 45%;
 
                         Rectangle {
                             width: 100%;
@@ -890,6 +890,7 @@ export component MainWindow inherits Window {
                         }
                     }
                     VerticalBox {
+                        width: 10%;
                         alignment: center;
                         spacing: 0px;
                         IconButton {
@@ -917,7 +918,7 @@ export component MainWindow inherits Window {
 
                     // Bottom-left: GOES-East_1km_NaturalColor
                     Rectangle {
-                        width: 50%;
+                        width: 45%;
 
                         if (loading) : Text {
                             text: "Loading...";
@@ -961,7 +962,7 @@ export component MainWindow inherits Window {
 
                     // Bottom-right: HRDPS.CONTINENTAL_PN-SLP (blended) with legend overlaid
                     TouchArea {
-                        width: 50%;
+                        width: 45%;
 
                         Rectangle {
                             width: 100%;
@@ -1037,12 +1038,17 @@ export component MainWindow inherits Window {
                             }
                         }
                     }
+
+                    // Spacer to maintain consistent layout
+                    Rectangle {
+                        width: 10%;
+                    }
                 }
                 // Bottom portion (40% of left side
                 // Bottom section: ClearDarkSky chart
                 TouchArea {
                     width: 100%;
-                    height: parent.height * 0.25;
+                    height: parent.height * 0.40;
 
                     Rectangle {
                         width: 100%;
