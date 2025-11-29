@@ -200,7 +200,7 @@ pub async fn update_aurora_images(main_window_weak: slint::Weak<MainWindow>) -> 
     use aurora::{fetch_aurora_forecast, fetch_ace_real_time_solar_wind, fetch_dscovr_solar_wind,
                      fetch_space_weather_overview, fetch_ace_epam, fetch_canadian_magnetic,
                      fetch_alerts_timeline, fetch_all_aurora_images, fetch_tonights_aurora_forecast,
-                     fetch_tomorrow_aurora_forecast, fetch_wsa_enlil};
+                     fetch_tomorrow_aurora_forecast, fetch_wsa_enlil, fetch_nasa_viirs};
 
     info!("Starting Aurora images update...");
 
@@ -216,6 +216,7 @@ pub async fn update_aurora_images(main_window_weak: slint::Weak<MainWindow>) -> 
     let weak9 = main_window_weak.clone();
     let weak10 = main_window_weak.clone();
     let weak11 = main_window_weak.clone();
+    let weak12 = main_window_weak.clone();
 
     // Run all fetches concurrently using tokio::join! instead of spawn
     tokio::join!(
@@ -409,6 +410,16 @@ pub async fn update_aurora_images(main_window_weak: slint::Weak<MainWindow>) -> 
                 }
                 mw.set_aurora_wsa_enlil_error(err);
             }, "WSA-ENLIL Prediction").await;
+        },
+
+        async {
+            let result = fetch_nasa_viirs().await;
+            fetch_and_update_single_image(weak12, result, |mw, img, err| {
+                if let Some(img) = img {
+                    mw.set_aurora_nasa_viirs_image(img);
+                }
+                mw.set_aurora_nasa_viirs_error(err);
+            }, "NASA VIIRS Nighttime").await;
         },
     );
 

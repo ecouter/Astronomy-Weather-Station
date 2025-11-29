@@ -38,6 +38,8 @@ export component AuroraPage inherits Rectangle {
     in property <bool> tomorrow_forecast_error: false;
     in property <image> wsa_enlil_image;
     in property <bool> wsa_enlil_error: false;
+    in property <image> nasa_viirs_image;
+    in property <bool> nasa_viirs_error: false;
     in property <[bool]> all_sky_errors: [];
     callback go_back();
     callback all_sky_previous();
@@ -402,12 +404,12 @@ export component AuroraPage inherits Rectangle {
                 HorizontalLayout {
                     spacing: 20px;
                     height: 50%;
-                
+
                     // ACE solar wind
                     VerticalLayout {
                         spacing: 10px;
-                        width: 600px;
-                    
+                        width: 400px;
+
                         Text {
                             text: "ACE Real-Time Solar Wind";
                             height: 30px;
@@ -416,7 +418,7 @@ export component AuroraPage inherits Rectangle {
                             font-weight: 600;
                             horizontal-alignment: center;
                         }
-                    
+
                         TouchArea {
                             Image {
                                 source: ace_solar_wind_image;
@@ -432,12 +434,12 @@ export component AuroraPage inherits Rectangle {
                                 }
                             }
                         }
-                    
+
                         // Error overlay
                         if (ace_solar_wind_error): Rectangle {
                             background: #000000;
                             z: 10;
-                        
+
                             Text {
                                 text: "IMAGE UNAVAILABLE";
                                 color: #ffffff;
@@ -448,12 +450,58 @@ export component AuroraPage inherits Rectangle {
                             }
                         }
                     }
-                
+
+                    // NASA VIIRS Nighttime (Top Middle)
+                    VerticalLayout {
+                        spacing: 10px;
+                        width: 400px;
+
+                        Text {
+                            text: "NASA VIIRS Nighttime";
+                            color: #ffffff;
+                            height: 30px;
+                            font-size: 16px;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                        }
+
+                        TouchArea {
+                            Image {
+                                source: nasa_viirs_image;
+                                width: 100%;
+                                height: 100%;
+                                image-fit: contain;
+                            }
+                            clicked => {
+                                if (!nasa_viirs_error) {
+                                    zoomed_image = nasa_viirs_image;
+                                    zoomed_title = "NASA VIIRS Nighttime";
+                                    show_zoomed_image = true;
+                                }
+                            }
+                        }
+
+                        // Error overlay
+                        if (nasa_viirs_error): Rectangle {
+                            background: #000000;
+                            z: 10;
+
+                            Text {
+                                text: "IMAGE UNAVAILABLE";
+                                color: #ffffff;
+                                font-size: 20px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
                     // DSCOVR solar wind
                     VerticalLayout {
                         spacing: 10px;
-                        width: 600px;
-                    
+                        width: 400px;
+
                         Text {
                             text: "DSCOVR Solar Wind Data";
                             color: #ffffff;
@@ -462,7 +510,7 @@ export component AuroraPage inherits Rectangle {
                             font-weight: 600;
                             horizontal-alignment: center;
                         }
-                    
+
                         TouchArea {
                             Image {
                                 source: dscovr_solar_wind_image;
@@ -478,14 +526,12 @@ export component AuroraPage inherits Rectangle {
                                 }
                             }
                         }
-                    
+
                         // Error overlay
                         if (dscovr_solar_wind_error): Rectangle {
-                            width: 300px;
-                            height: 250px;
                             background: #000000;
                             z: 10;
-                        
+
                             Text {
                                 text: "IMAGE UNAVAILABLE";
                                 color: #ffffff;
