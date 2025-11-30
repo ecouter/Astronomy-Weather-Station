@@ -4,7 +4,9 @@ use once_cell::sync::Lazy;
 use slint::ComponentHandle;
 use crate::MainWindow;
 use crate::app::utils::{decode_png_to_slint_image, resize_png_if_needed};
-use tokio::time::Duration;
+use crate::app::coordinates::load_coordinates;
+use chrono::{Duration, Timelike, Utc};
+use tokio::time::Duration as TokioDuration;
 
 pub static ALL_SKY_IMAGES: Lazy<Mutex<Vec<Vec<u8>>>> = Lazy::new(|| Mutex::new(Vec::new()));
 pub static ALL_SKY_INDEX: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::new(0));
@@ -204,6 +206,25 @@ pub async fn update_aurora_images(main_window_weak: slint::Weak<MainWindow>) -> 
 
     info!("Starting Aurora images update...");
 
+    // Load coordinates and compute time in frontend
+    let (lat, lon) = if let Some(window) = main_window_weak.upgrade() {
+        load_coordinates(&window).unwrap()
+    } else {
+        (45.0, -75.0) // fallback coordinates
+    };
+
+    // Compute time for NASA VIIRS (yesterday)
+    let yesterday = Utc::now() - Duration::days(1);
+    let nasa_time_str = yesterday.format("%Y-%m-%d").to_string();
+
+    // Compute time for all-sky images (UTC+1, floored to nearest half-hour)
+    let utc_plus_1 = Utc::now() + Duration::hours(1);
+    let floored_minute = if utc_plus_1.minute() < 30 { 0 } else { 30 };
+    let dt = utc_plus_1.with_minute(floored_minute).unwrap();
+    let all_sky_date_str = dt.format("%Y/%m/%d").to_string();
+    let all_sky_time_str = dt.format("%H%M").to_string();
+    let all_sky_time_param = format!("{}/{}", all_sky_date_str, all_sky_time_str);
+
     // Create clones for each async block to avoid borrow checker issues
     let weak1 = main_window_weak.clone();
     let weak2 = main_window_weak.clone();
@@ -292,7 +313,7 @@ pub async fn update_aurora_images(main_window_weak: slint::Weak<MainWindow>) -> 
 
         // All-sky images (fetched as one unit)
         async {
-            match fetch_all_aurora_images().await {
+            match fetch_all_aurora_images(all_sky_time_param).await {
                 Ok(all_sky_images_result) => {
                     info!("Successfully fetched: All Sky Images");
 
@@ -413,7 +434,7 @@ pub async fn update_aurora_images(main_window_weak: slint::Weak<MainWindow>) -> 
         },
 
         async {
-            let result = fetch_nasa_viirs().await;
+            let result = fetch_nasa_viirs(lat, lon, nasa_time_str).await;
             fetch_and_update_single_image(weak12, result, |mw, img, err| {
                 if let Some(img) = img {
                     mw.set_aurora_nasa_viirs_image(img);
@@ -462,7 +483,7 @@ fn start_refresh_countdown(main_window: &MainWindow) {
     std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(1));
+            let mut interval = tokio::time::interval(TokioDuration::from_secs(1));
             let mut remaining_seconds = 300; // 5 minutes
 
             loop {

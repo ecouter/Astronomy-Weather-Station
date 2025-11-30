@@ -1,7 +1,5 @@
 use log::*;
-use chrono::{Duration, Timelike, Utc};
 use futures::future::join_all;
-use serde::{Deserialize, Serialize};
 
 /// Struct to hold all aurora all-sky images
 #[derive(Debug, Clone)]
@@ -79,30 +77,31 @@ pub async fn fetch_wsa_enlil() -> Result<Vec<u8>, anyhow::Error> {
 }
 
 /// Fetch NASA VIIRS SNPP DayNightBand nighttime image (JPEG format for display)
-pub async fn fetch_nasa_viirs() -> Result<Vec<u8>, anyhow::Error> {
-    // Use the specific URL provided by the user that shows nighttime city lights
-    let url = "https://wvs.earthdata.nasa.gov/api/v1/snapshot?REQUEST=GetSnapshot&LAYERS=VIIRS_SNPP_DayNightBand_At_Sensor_Radiance&CRS=EPSG:4326&TIME=2025-11-28&WRAP=DAY&BBOX=44.99,-79.76,62.58,-57.11&FORMAT=image/jpeg&WIDTH=5154&HEIGHT=4003&AUTOSCALE=TRUE";
+pub async fn fetch_nasa_viirs(lat: f64, lon: f64, time_str: String) -> Result<Vec<u8>, anyhow::Error> {
+    // Compute bounding box from provided coordinates
+    let min_lon = lon - 11.35;
+    let max_lon = lon + 11.35;
+    let min_lat = lat - 1.0;
+    let max_lat = lat + 16.0;
+
+    // Build dynamic URL
+    let url = format!(
+        "https://wvs.earthdata.nasa.gov/api/v1/snapshot?REQUEST=GetSnapshot&LAYERS=VIIRS_SNPP_DayNightBand_At_Sensor_Radiance&CRS=EPSG:4326&TIME={}&WRAP=DAY&BBOX={},{},{},{}&FORMAT=image/jpeg&WIDTH=5154&HEIGHT=4003&AUTOSCALE=TRUE",
+        time_str, min_lat, min_lon, max_lat, max_lon
+    );
 
     info!("Fetching NASA VIIRS image from: {}", url);
 
     // Fetch JPEG image
-    let jpeg_data = fetch_image(url).await?;
+    let jpeg_data = fetch_image(&url).await?;
 
     Ok(jpeg_data)
 }
 
-
-
-
 /// Fetch all aurora all-sky images from various locations
-pub async fn fetch_all_aurora_images() -> Result<AuroraAllSkyImages, anyhow::Error> {
+pub async fn fetch_all_aurora_images(time_str: String) -> Result<AuroraAllSkyImages, anyhow::Error> {
     // Generate dynamic URL for Heiligenblut, Austria (UTC+1, floored to nearest half-hour)
-    let utc_plus_1 = Utc::now() + Duration::hours(1);
-    let floored_minute = if utc_plus_1.minute() < 30 { 0 } else { 30 };
-    let dt = utc_plus_1.with_minute(floored_minute).unwrap();
-    let date_str = dt.format("%Y/%m/%d").to_string();
-    let time_str = dt.format("%H%M").to_string();
-    let austrian_url = format!("https://www.foto-webcam.eu/webcam/wallackhaus/{}/{}_hd.jpg", date_str, time_str);
+    let austrian_url = format!("https://www.foto-webcam.eu/webcam/wallackhaus/{}/{}_hd.jpg", time_str, time_str);
 
     // List of URLs in specified order
     let urls = vec![
@@ -250,7 +249,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fetch_nasa_viirs() {
-        let result = fetch_nasa_viirs().await;
+        let result = fetch_nasa_viirs(45.0, -75.0, "2023-01-01".to_string()).await;
         assert!(result.is_ok());
         let data = result.unwrap();
         assert!(!data.is_empty());
@@ -258,7 +257,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fetch_all_aurora_images() {
-        let result = fetch_all_aurora_images().await;
+        let result = fetch_all_aurora_images("2023/01/01".to_string()).await;
         assert!(result.is_ok());
         let images = result.unwrap();
         assert!(!images.kjell_henriksen_observatory_norway.is_empty());
