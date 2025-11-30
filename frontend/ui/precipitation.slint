@@ -150,7 +150,7 @@ export component PrecipitationPage inherits Rectangle {
                     background: selected_mode_index == 0 ? #2f7fff : #202020;
                     border-radius: 6px;
                     height: 24px;
-                    width: 120px;
+                    width: root.width * 0.09375;
 
                     TouchArea {
                         clicked => { model_changed(0); }
@@ -170,7 +170,7 @@ export component PrecipitationPage inherits Rectangle {
                     background: selected_mode_index == 1 ? #2f7fff : #202020;
                     border-radius: 6px;
                     height: 24px;
-                    width: 120px;
+                    width: root.width * 0.09375;
 
                     TouchArea {
                         clicked => { model_changed(1); }
@@ -198,7 +198,7 @@ export component PrecipitationPage inherits Rectangle {
                     Rectangle {
                         background: selected_category_index == 0 ? #404040 : #181818;
                         border-radius: 5px;
-                        height: 22px;
+                        height: root.height * 0.030555;
                         padding-left: 8px;
                         padding-right: 8px;
 
@@ -219,7 +219,7 @@ export component PrecipitationPage inherits Rectangle {
                     Rectangle {
                         background: selected_category_index == 1 ? #404040 : #181818;
                         border-radius: 5px;
-                        height: 22px;
+                        height: root.height * 0.030555;
                         padding-left: 8px;
                         padding-right: 8px;
 
@@ -240,7 +240,7 @@ export component PrecipitationPage inherits Rectangle {
                     Rectangle {
                         background: selected_category_index == 2 ? #404040 : #181818;
                         border-radius: 5px;
-                        height: 22px;
+                        height: root.height * 0.030555;
                         padding-left: 8px;
                         padding-right: 8px;
 
@@ -261,7 +261,7 @@ export component PrecipitationPage inherits Rectangle {
                     Rectangle {
                         background: selected_category_index == 3 ? #404040 : #181818;
                         border-radius: 5px;
-                        height: 22px;
+                        height: root.height * 0.030555;
                         padding-left: 8px;
                         padding-right: 8px;
 
@@ -282,7 +282,7 @@ export component PrecipitationPage inherits Rectangle {
                     Rectangle {
                         background: selected_category_index == 4 ? #404040 : #181818;
                         border-radius: 5px;
-                        height: 22px;
+                        height: root.height * 0.030555;
                         padding-left: 8px;
                         padding-right: 8px;
 
@@ -303,7 +303,7 @@ export component PrecipitationPage inherits Rectangle {
                     Rectangle {
                         background: selected_category_index == 5 ? #404040 : #181818;
                         border-radius: 5px;
-                        height: 22px;
+                        height: root.height * 0.030555;
                         padding-left: 8px;
                         padding-right: 8px;
 
@@ -324,7 +324,7 @@ export component PrecipitationPage inherits Rectangle {
                     Rectangle {
                         background: selected_category_index == 6 ? #404040 : #181818;
                         border-radius: 5px;
-                        height: 22px;
+                        height: root.height * 0.030555;
                         padding-left: 8px;
                         padding-right: 8px;
 
@@ -347,7 +347,7 @@ export component PrecipitationPage inherits Rectangle {
                     label: "Select Layer";
                     items: layer_dropdown_items;
                     current_index: selected_sublayer_index;
-                    width: 300px;
+                    width: root.width * 0.234375;
                     selected(index) => { sublayer_changed(index); }
                 }
 
@@ -356,7 +356,7 @@ export component PrecipitationPage inherits Rectangle {
                     label: "Model";
                     items: model_dropdown_items;
                     current_index: selected_predictions_model_index;
-                    width: 150px;
+                    width: root.width * 0.1171875;
                     height: 50px;
                     selected(index) => { predictions_model_changed(index); }
                 }
@@ -444,7 +444,7 @@ export component PrecipitationPage inherits Rectangle {
                         font-size: 9px;
                         horizontal-alignment: center;
                         vertical-alignment: center;
-                        width: 80px;
+                        width: root.width * 0.0625;
                     }
 
                     IconButton {
@@ -459,7 +459,7 @@ export component PrecipitationPage inherits Rectangle {
                         minimum: time_slider_min;
                         maximum: time_slider_max;
                         value_changed(value) => { time_slider_changed(value); }
-                        width: 150px;
+                        width: root.width * 0.1171875;
                     }
                 }
             }
@@ -551,7 +551,7 @@ export component PrecipitationPage inherits Rectangle {
                     source: legend_image;
                     width: parent.width * 0.4;
                     height: parent.height * 0.4;
-                    x: 670px;
+                    x: parent.width *0.6;
                     y: 0px;
                     image-fit: contain;
                     opacity: 0.95;
@@ -570,14 +570,14 @@ export component PrecipitationPage inherits Rectangle {
             // Right-side metrics/context column
             // TODO IMPLEMENT POINT DATA
             if(false) : VerticalLayout {
-                width: 260px;
+                width: root.width * 0.203125;
                 spacing: 8px;
 
                 // Probabilities card
                 Rectangle {
                     background: #181818;
                     border-radius: 8px;
-                    height: 90px;
+                    height: root.height * 0.125;
                     padding-left: 8px;
                     padding-right: 8px;
                     padding-top: 6px;
@@ -600,7 +600,7 @@ export component PrecipitationPage inherits Rectangle {
                                 text: "Any precip";
                                 color: #c0c0c0;
                                 font-size: 8px;
-                                width: 80px;
+                                width: root.width * 0.0625;
                             }
                             Rectangle {
                                 horizontal-stretch: 1;
@@ -630,7 +630,7 @@ export component PrecipitationPage inherits Rectangle {
                                 text: "Rain";
                                 color: #c0c0c0;
                                 font-size: 8px;
-                                width: 80px;
+                                width: root.width * 0.0625;
                             }
                             Rectangle {
                                 horizontal-stretch: 1;
@@ -660,7 +660,7 @@ export component PrecipitationPage inherits Rectangle {
                                 text: "Snow";
                                 color: #c0c0c0;
                                 font-size: 8px;
-                                width: 80px;
+                                width: root.width * 0.0625;
                             }
                             Rectangle {
                                 horizontal-stretch: 1;
@@ -690,7 +690,7 @@ export component PrecipitationPage inherits Rectangle {
                 Rectangle {
                     background: #181818;
                     border-radius: 8px;
-                    height: 80px;
+                    height: root.height * 0.111111;
                     padding-left: 8px;
                     padding-right: 8px;
                     padding-top: 6px;
@@ -745,7 +745,7 @@ export component PrecipitationPage inherits Rectangle {
                 Rectangle {
                     background: #181818;
                     border-radius: 8px;
-                    height: 70px;
+                    height: root.height * 0.097222;
                     padding-left: 8px;
                     padding-right: 8px;
                     padding-top: 6px;
@@ -827,7 +827,7 @@ export component PrecipitationPage inherits Rectangle {
         // Bottom strip: run info, model selector, and status
         HorizontalLayout {
             width: 100%;
-            height: 22px;
+            height: root.height * 0.030555;
             spacing: 14px;
 
             Text {

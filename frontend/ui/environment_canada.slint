@@ -4,8 +4,6 @@ import { Icons } from "../../material-1.0/ui/icons/icons.slint";
 
 export component EnvironmentCanadaPage inherits Rectangle {
     background: #1c1c1c;
-    height: 720px;
-    width: 1280px;
     in property <image> clouds_image;
     in property <image> surface_wind_image;
     in property <image> seeing_image;
@@ -106,8 +104,8 @@ export component EnvironmentCanadaPage inherits Rectangle {
                 }
 
                 TouchArea {
-                    width: 336px;
-                    height: 280px;
+                    width: root.width * 0.2625;
+                    height: root.height * 0.388888;
                     Image {
                         source: clouds_image;
                         width: 100%;
@@ -171,8 +169,8 @@ export component EnvironmentCanadaPage inherits Rectangle {
                 }
 
                 TouchArea {
-                    width: 336px;
-                    height: 280px;
+                    width: root.width * 0.2625;
+                    height: root.height * 0.388888;
                     Image {
                         source: surface_wind_image;
                         width: 100%;
@@ -241,8 +239,8 @@ export component EnvironmentCanadaPage inherits Rectangle {
                 }
 
                 TouchArea {
-                    width: 336px;
-                    height: 280px;
+                    width: root.width * 0.2625;
+                    height: root.height * 0.388888;
                     Image {
                         source: seeing_image;
                         width: 100%;
@@ -306,8 +304,8 @@ export component EnvironmentCanadaPage inherits Rectangle {
                 }
 
                 TouchArea {
-                    width: 336px;
-                    height: 280px;
+                    width: root.width * 0.2625;
+                    height: root.height * 0.388888;
                     Image {
                         source: temperature_image;
                         width: 100%;
@@ -376,8 +374,8 @@ export component EnvironmentCanadaPage inherits Rectangle {
                 }
 
                 TouchArea {
-                    width: 336px;
-                    height: 280px;
+                    width: root.width * 0.2625;
+                    height: root.height * 0.388888;
                     Image {
                         source: transparency_image;
                         width: 100%;
@@ -441,8 +439,8 @@ export component EnvironmentCanadaPage inherits Rectangle {
                 }
 
                 TouchArea {
-                    width: 336px;
-                    height: 280px;
+                    width: root.width * 0.2625;
+                    height: root.height * 0.388888;
                     Image {
                         source: relative_humidity_image;
                         width: 100%;
@@ -501,8 +499,8 @@ export component EnvironmentCanadaPage inherits Rectangle {
             }
 
             touch_area := TouchArea {
-                width: 720px;
-                height: 600px;
+                width: root.width * 0.5625;
+                height: root.height * 0.833333;
                 Image {
                     source: zoomed_image;
                     width: 100%;

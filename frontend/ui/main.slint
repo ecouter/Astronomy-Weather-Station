@@ -10,10 +10,12 @@ import { Icons } from "../../material-1.0/ui/icons/icons.slint";
 
 export component MainWindow inherits Window {
     title: "Weather Station Frontend";
-    width: 1280px;
-    height: 720px;
     preferred-width: 1280px;
     preferred-height: 720px;
+    min-width: 1024px;
+    max-width: 1920px;
+    min-height: 576px;
+    max-height: 1080px;
     background: #1c1c1c;
 
     in property <bool> loading;
@@ -147,6 +149,8 @@ export component MainWindow inherits Window {
     in property <bool> aurora_tomorrow_forecast_error: false;
     in property <image> aurora_wsa_enlil_image;
     in property <bool> aurora_wsa_enlil_error: false;
+    in property <image> aurora_nasa_viirs_image;
+    in property <bool> aurora_nasa_viirs_error: false;
     in property <[bool]> aurora_all_sky_errors: [];
 
     // Precipitation page bindings
@@ -246,16 +250,19 @@ export component MainWindow inherits Window {
     callback aurora_all_sky_next();
     callback aurora_refresh();
 
-    if (!show_env_canada): HorizontalBox {
-        // Left side: Cloud cover prediction (top portion, 1/3 width)
-        padding-left: 35px;
+    if (!show_env_canada): HorizontalLayout {
+        alignment: start;
+        // Left side: Cloud cover prediction (top portion, ~33% width)
         VerticalBox {
-            width: 400px; // 1/3 of 1200
-            
+            width: 33.33%;
+            min-width: 320px;
+            max-width: 480px;
+
             // Cloud cover navigation buttons
             HorizontalBox {
                 alignment: center;
                 spacing: 0px;
+                height: 50px;
 
                 IconButton {
                     icon: Icons.chevron_backward;
@@ -287,9 +294,9 @@ export component MainWindow inherits Window {
                 }
             }
 
-            // Cloud cover section (top 60% of left side)
+            // Cloud cover section
             TouchArea {
-                height: 225px; // 60% of left side height
+                height: (parent.height - 50px) * 0.28; // Account for fixed navigation height
 
                 Rectangle {
                     width: 100%;
@@ -313,7 +320,7 @@ export component MainWindow inherits Window {
                             width: 100%;
                             height: 100%;
                             y: -10px;
-                            image-fit: fill;
+                            image-fit: contain;
                         }
                         Rectangle {
                             width: parent.width;
@@ -326,7 +333,7 @@ export component MainWindow inherits Window {
                             source: cloud_cover_image;
                             width: 100%;
                             height: 100%;
-                            image-fit: fill;
+                            image-fit: contain;
                         }
 
                         // Red dot at center (coordinate location)
@@ -373,7 +380,7 @@ export component MainWindow inherits Window {
 
             // ClearOutside conditions display - one row per astronomical night
             Rectangle {
-                height: 120px;
+                height: (parent.height - 50px) * 0.25;
 
                 VerticalLayout {
                     Rectangle {
@@ -401,14 +408,14 @@ export component MainWindow inherits Window {
                             color: #ffffff;
                             font-size: 10px;
                             horizontal-alignment: center;
-                            width: 15px;
+                            width: 25px;
                         }
                     }
                     HorizontalLayout {
                         Rectangle { width: 60px; } // Spacer for label
                         for i in day0_conditions.length : Rectangle {
-                            width: 15px;
-                            height: 15px;
+                            width: 25px;
+                            height: 12px;
                             background: day0_conditions[i] == "bad" ? #ff0000 : day0_conditions[i] == "ok" ? #ffff00 : #00ff00;
                             border-radius: 2px;
 
@@ -436,14 +443,14 @@ export component MainWindow inherits Window {
                             color: #ffffff;
                             font-size: 10px;
                             horizontal-alignment: center;
-                            width: 15px;
+                            width: 25px;
                         }
                     }
                     HorizontalLayout {
                         Rectangle { width: 60px; } // Spacer for label
                         for i in day1_conditions.length : Rectangle {
-                            width: 15px;
-                            height: 15px;
+                            width: 25px;
+                            height: 12px;
                             background: day1_conditions[i] == "bad" ? #ff0000 : day1_conditions[i] == "ok" ? #ffff00 : #00ff00;
                             border-radius: 2px;
 
@@ -471,14 +478,14 @@ export component MainWindow inherits Window {
                             color: #ffffff;
                             font-size: 10px;
                             horizontal-alignment: center;
-                            width: 15px;
+                            width: 25px;
                         }
                     }
                     HorizontalLayout {
                         Rectangle { width: 60px; } // Spacer for label
                         for i in day2_conditions.length : Rectangle {
-                            width: 15px;
-                            height: 15px;
+                            width: 25px;
+                            height: 12px;
                             background: day2_conditions[i] == "bad" ? #ff0000 : day2_conditions[i] == "ok" ? #ffff00 : #00ff00;
                             border-radius: 2px;
 
@@ -506,14 +513,14 @@ export component MainWindow inherits Window {
                             color: #ffffff;
                             font-size: 10px;
                             horizontal-alignment: center;
-                            width: 15px;
+                            width: 25px;
                         }
                     }
                     HorizontalLayout {
                         Rectangle { width: 60px; } // Spacer for label
                         for i in day3_conditions.length : Rectangle {
-                            width: 15px;
-                            height: 15px;
+                            width: 25px;
+                            height: 12px;
                             background: day3_conditions[i] == "bad" ? #ff0000 : day3_conditions[i] == "ok" ? #ffff00 : #00ff00;
                             border-radius: 2px;
 
@@ -547,8 +554,8 @@ export component MainWindow inherits Window {
                     HorizontalLayout {
                         Rectangle { width: 60px; } // Spacer for label
                         for i in day4_conditions.length : Rectangle {
-                            width: 15px;
-                            height: 15px;
+                            width: 25px;
+                            height: 12px;
                             background: day4_conditions[i] == "bad" ? #ff0000 : day4_conditions[i] == "ok" ? #ffff00 : #00ff00;
                             border-radius: 2px;
 
@@ -582,8 +589,8 @@ export component MainWindow inherits Window {
                     HorizontalLayout {
                         Rectangle { width: 60px; } // Spacer for label
                         for i in day5_conditions.length : Rectangle {
-                            width: 15px;
-                            height: 15px;
+                            width: 25px;
+                            height: 12px;
                             background: day5_conditions[i] == "bad" ? #ff0000 : day5_conditions[i] == "ok" ? #ffff00 : #00ff00;
                             border-radius: 2px;
 
@@ -617,8 +624,8 @@ export component MainWindow inherits Window {
                     HorizontalLayout {
                         Rectangle { width: 60px; } // Spacer for label
                         for i in day6_conditions.length : Rectangle {
-                            width: 15px;
-                            height: 15px;
+                            width: 25px;
+                            height: 12px;
                             background: day6_conditions[i] == "bad" ? #ff0000 : day6_conditions[i] == "ok" ? #ffff00 : #00ff00;
                             border-radius: 2px;
 
@@ -634,13 +641,9 @@ export component MainWindow inherits Window {
                 }
             }
 
-            Rectangle {
-                height: 100px;
-            }
-
             // MeteoBlue Night overview section
             Rectangle {
-                height: 200px;
+                height: (parent.height - 50px) * 0.33;
 
                 VerticalLayout {
                     Rectangle {
@@ -696,28 +699,29 @@ export component MainWindow inherits Window {
             }
         }
 
-        // Right side: weather images and bottom area (2/3 width)
+        // Right side: weather images and bottom area (~67% width)
         VerticalBox {
-            padding-left: 0px;
-            width: 780px; // 2/3 of 1200
+            width: 66.67%;
+            min-width: 640px;
+            max-width: 1440px;
 
 
             VerticalLayout {
                 alignment: start;
-                height: 30px;
-                spacing: 20px;
+                height: root.height * 0.042;
+                spacing: root.height * 0.028;
                 VerticalBox {
                     spacing: 0px;
                     HorizontalBox {
                         alignment: center;
                         spacing: 5px;
                         Button {
-                            width: 210px;
+                            width: root.width * 0.164;
                             text: "Environment Canada Forecasts";
                             clicked => { show_env_canada = true; }
                         }
                         Button {
-                            width: 110px;
+                            width: root.width * 0.086;
                             text: "Nina Sessions";
                             clicked => { show_nina = true; }
                         }
@@ -747,7 +751,7 @@ export component MainWindow inherits Window {
 
             // Top 2/3: 2x2 grid of weather images
             VerticalBox {
-                height: 533px; // 2/3 of 800
+                height: parent.height * 0.60; // Proportional to parent container height
 
                 // Top row
                 HorizontalBox {
@@ -755,7 +759,7 @@ export component MainWindow inherits Window {
 
                     // Top-left: GOES-East_1km_VisibleIRSandwich-NightMicrophysicsIR
                     Rectangle {
-                        width: 50%;
+                        width: 45%;
 
                         if (loading) : Text {
                             text: "Loading...";
@@ -770,7 +774,7 @@ export component MainWindow inherits Window {
                                 source: top_left_image;
                                 width: 100%;
                                 height: 100%;
-                                image-fit: fill;
+                                image-fit: contain;
                             }
                             clicked => {
                                 zoomed_image = top_left_image;
@@ -799,7 +803,7 @@ export component MainWindow inherits Window {
 
                     // Top-right: Wind pressure visualization
                     TouchArea {
-                        width: 50%;
+                        width: 45%;
 
                         Rectangle {
                             width: 100%;
@@ -822,7 +826,7 @@ export component MainWindow inherits Window {
                                     width: 100%;
                                     height: 100%;
                                     y: -10px;
-                                    image-fit: fill;
+                                    image-fit: contain;
                                     opacity: 70%;
                                 }
 
@@ -831,7 +835,7 @@ export component MainWindow inherits Window {
                                     source: wind_image;
                                     width: 100%;
                                     height: 100%;
-                                    image-fit: fill;
+                                    image-fit: contain;
                                 }
 
                                 // Legend overlaid on right
@@ -888,6 +892,7 @@ export component MainWindow inherits Window {
                         }
                     }
                     VerticalBox {
+                        width: 10%;
                         alignment: center;
                         spacing: 0px;
                         IconButton {
@@ -915,7 +920,7 @@ export component MainWindow inherits Window {
 
                     // Bottom-left: GOES-East_1km_NaturalColor
                     Rectangle {
-                        width: 50%;
+                        width: 45%;
 
                         if (loading) : Text {
                             text: "Loading...";
@@ -930,7 +935,7 @@ export component MainWindow inherits Window {
                                 source: bottom_left_image;
                                 width: 100%;
                                 height: 100%;
-                                image-fit: fill;
+                                image-fit: contain;
                             }
                             clicked => {
                                 zoomed_image = bottom_left_image;
@@ -959,7 +964,7 @@ export component MainWindow inherits Window {
 
                     // Bottom-right: HRDPS.CONTINENTAL_PN-SLP (blended) with legend overlaid
                     TouchArea {
-                        width: 50%;
+                        width: 45%;
 
                         Rectangle {
                             width: 100%;
@@ -982,7 +987,7 @@ export component MainWindow inherits Window {
                                     width: 100%;
                                     height: 100%;
                                     y: -10px;
-                                    image-fit: fill;
+                                    image-fit: contain;
                                 }
 
                                 // Main image
@@ -990,7 +995,7 @@ export component MainWindow inherits Window {
                                     source: bottom_right_image;
                                     width: 100%;
                                     height: 100%;
-                                    image-fit: fill;
+                                    image-fit: contain;
                                     opacity: 60%;
                                 }
 
@@ -1035,12 +1040,17 @@ export component MainWindow inherits Window {
                             }
                         }
                     }
+
+                    // Spacer to maintain consistent layout
+                    Rectangle {
+                        width: 10%;
+                    }
                 }
                 // Bottom portion (40% of left side
                 // Bottom section: ClearDarkSky chart
                 TouchArea {
                     width: 100%;
-                    height: 150px;
+                    height: parent.height * 0.40;
 
                     Rectangle {
                         width: 100%;
@@ -1269,6 +1279,8 @@ export component MainWindow inherits Window {
         tomorrow_forecast_error: aurora_tomorrow_forecast_error;
         wsa_enlil_image: aurora_wsa_enlil_image;
         wsa_enlil_error: aurora_wsa_enlil_error;
+        nasa_viirs_image: aurora_nasa_viirs_image;
+        nasa_viirs_error: aurora_nasa_viirs_error;
         all_sky_errors: aurora_all_sky_errors;
         go_back => { show_aurora = false; }
         all_sky_previous => { root.aurora_all_sky_previous(); }
@@ -1285,14 +1297,14 @@ export component MainWindow inherits Window {
 
         VerticalLayout {
             alignment: center;
-            padding-left: 480px;
+            padding-left: root.width * 0.375;
 
             Rectangle {
                 background: #1c1c1c;
                 border-radius: 8px;
 
-                width: 300px;
-                height: 150px;
+                width: root.width * 0.25;
+                height: root.height * 0.2;
 
                 VerticalLayout {
                     alignment: center;
@@ -1309,7 +1321,7 @@ export component MainWindow inherits Window {
                         text: coordinates_popup_message;
                         color: white;
                         wrap: word-wrap;
-                        height: 50px;
+                        height: root.height * 0.07;
                         horizontal-alignment: center;
                     }
 
@@ -1352,8 +1364,8 @@ export component MainWindow inherits Window {
             }
 
             touch_area := TouchArea {
-                width: 1120px;
-                height: 630px;
+                width: root.width * 0.8;
+                height: root.height * 0.8;
 
                 Rectangle {
                     width: 100%;
@@ -1470,4 +1482,5 @@ export component MainWindow inherits Window {
             }
         }
     }
+
 }
