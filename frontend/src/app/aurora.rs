@@ -39,6 +39,15 @@ pub fn setup_aurora_callbacks(main_window: &MainWindow) {
                 // Start countdown timer immediately
                 start_refresh_countdown(&window);
 
+                // Load coordinates in the main thread where window is available
+                let (lat, lon) = if let Ok(coords) = load_coordinates(&window) {
+                    info!("Aurora refresh: coordinates loaded successfully: lat={}, lon={}", coords.0, coords.1);
+                    coords
+                } else {
+                    error!("Aurora refresh: could not load coordinates, using defaults");
+                    (45.0, -75.0)
+                };
+
                 // Clone weak for async use in background thread
                 let weak_clone = window.as_weak();
 
@@ -46,7 +55,7 @@ pub fn setup_aurora_callbacks(main_window: &MainWindow) {
                 std::thread::spawn(move || {
                     let rt = tokio::runtime::Runtime::new().unwrap();
                     rt.block_on(async move {
-                        if let Err(e) = update_aurora_images(weak_clone).await {
+                        if let Err(e) = update_aurora_images(weak_clone, lat, lon).await {
                             error!("Aurora refresh failed: {}", e);
                         }
                     });
@@ -198,24 +207,13 @@ async fn fetch_and_update_single_image(
     }
 }
 
-pub async fn update_aurora_images(main_window_weak: slint::Weak<MainWindow>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn update_aurora_images(main_window_weak: slint::Weak<MainWindow>, lat: f64, lon: f64) -> Result<(), Box<dyn std::error::Error>> {
     use aurora::{fetch_aurora_forecast, fetch_ace_real_time_solar_wind, fetch_dscovr_solar_wind,
                      fetch_space_weather_overview, fetch_ace_epam, fetch_canadian_magnetic,
                      fetch_alerts_timeline, fetch_all_aurora_images, fetch_tonights_aurora_forecast,
                      fetch_tomorrow_aurora_forecast, fetch_wsa_enlil, fetch_nasa_viirs};
 
-    info!("Starting Aurora images update...");
-
-    // Load coordinates and compute time in frontend
-    let (lat, lon) = if let Some(window) = main_window_weak.upgrade() {
-        load_coordinates(&window).unwrap()
-    } else {
-        (45.0, -75.0) // fallback coordinates
-    };
-
-    // Compute time for NASA VIIRS (yesterday)
-    let yesterday = Utc::now() - Duration::days(1);
-    let nasa_time_str = yesterday.format("%Y-%m-%d").to_string();
+    info!("Starting Aurora images update with coordinates: lat={}, lon={}", lat, lon);
 
     // Compute time for all-sky images (UTC+1, floored to nearest half-hour)
     let utc_plus_1 = Utc::now() + Duration::hours(1);
@@ -434,7 +432,32 @@ pub async fn update_aurora_images(main_window_weak: slint::Weak<MainWindow>) -> 
         },
 
         async {
-            let result = fetch_nasa_viirs(lat, lon, nasa_time_str).await;
+            // Try today's date first, fallback to yesterday if it fails
+            let today = Utc::now();
+            let today_str = today.format("%Y-%m-%d").to_string();
+            let yesterday = today - Duration::days(1);
+            let yesterday_str = yesterday.format("%Y-%m-%d").to_string();
+
+            let result = match fetch_nasa_viirs(lat, lon, today_str).await {
+                Ok(data) => {
+                    info!("Successfully fetched NASA VIIRS data for today");
+                    Ok(data)
+                },
+                Err(e) => {
+                    warn!("Failed to fetch NASA VIIRS data for today ({}), trying yesterday", e);
+                    match fetch_nasa_viirs(lat, lon, yesterday_str).await {
+                        Ok(data) => {
+                            info!("Successfully fetched NASA VIIRS data for yesterday (fallback)");
+                            Ok(data)
+                        },
+                        Err(e2) => {
+                            error!("Failed to fetch NASA VIIRS data for both today and yesterday: today={}, yesterday={}", e, e2);
+                            Err(e2)
+                        }
+                    }
+                }
+            };
+
             fetch_and_update_single_image(weak12, result, |mw, img, err| {
                 if let Some(img) = img {
                     mw.set_aurora_nasa_viirs_image(img);
