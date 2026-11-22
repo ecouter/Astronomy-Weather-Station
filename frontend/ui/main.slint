@@ -1232,7 +1232,7 @@ export component MainWindow inherits Window {
                                     border-radius: 2px;
                                     Text {
                                         text: night_clouds_low[row_idx];
-                                        color: night_clouds_low[row_idx] > 5 && night_clouds_low[row_idx] <= 20 ? #000000 : #ffffff;
+                                        color: night_clouds_low[row_idx] <= 20 ? #000000 : #ffffff;
                                         font-size: 10px;
                                         width: 100%;
                                         height: 100%;
@@ -1247,7 +1247,7 @@ export component MainWindow inherits Window {
                                     border-radius: 2px;
                                     Text {
                                         text: night_clouds_mid[row_idx];
-                                        color: night_clouds_mid[row_idx] > 5 && night_clouds_mid[row_idx] <= 20 ? #000000 : #ffffff;
+                                        color: night_clouds_mid[row_idx] <= 20 ? #000000 : #ffffff;
                                         font-size: 10px;
                                         width: 100%;
                                         height: 100%;
@@ -1262,7 +1262,7 @@ export component MainWindow inherits Window {
                                     border-radius: 2px;
                                     Text {
                                         text: night_clouds_high[row_idx];
-                                        color: night_clouds_high[row_idx] > 5 && night_clouds_high[row_idx] <= 20 ? #000000 : #ffffff;
+                                        color: night_clouds_high[row_idx] <= 20 ? #000000 : #ffffff;
                                         font-size: 10px;
                                         width: 100%;
                                         height: 100%;
