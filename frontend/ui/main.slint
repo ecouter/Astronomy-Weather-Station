@@ -131,9 +131,6 @@ export component MainWindow inherits Window {
     in property <image> aurora_ace_epam_image;
     in property <image> aurora_canadian_magnetic_image;
     in property <image> aurora_alerts_timeline_image;
-    in property <image> aurora_all_sky_image;
-    in property <string> aurora_all_sky_location_name;
-    in property <[image]> aurora_all_sky_images;
     in property <string> aurora_refresh_button_text: "Refresh";
     in property <bool> aurora_refresh_button_enabled: true;
     in property <bool> aurora_forecast_error: false;
@@ -151,7 +148,6 @@ export component MainWindow inherits Window {
     in property <bool> aurora_wsa_enlil_error: false;
     in property <image> aurora_nasa_viirs_image;
     in property <bool> aurora_nasa_viirs_error: false;
-    in property <[bool]> aurora_all_sky_errors: [];
 
     // Status bar data - timestamps updated by Rust as each feed arrives
     in property <string> last_weather_update: "";
@@ -253,8 +249,6 @@ export component MainWindow inherits Window {
     callback precipitation_load_all_hours();
 
     // Aurora callbacks (handled in Rust via app::aurora)
-    callback aurora_all_sky_previous();
-    callback aurora_all_sky_next();
     callback aurora_refresh();
 
     // Auto-cycle timers. Different intervals keep the panels from changing in lockstep.
@@ -1293,9 +1287,6 @@ export component MainWindow inherits Window {
         ace_epam_image: aurora_ace_epam_image;
         canadian_magnetic_image: aurora_canadian_magnetic_image;
         alerts_timeline_image: aurora_alerts_timeline_image;
-        all_sky_image: aurora_all_sky_image;
-        all_sky_location_name: aurora_all_sky_location_name;
-        all_sky_images: aurora_all_sky_images;
         refresh_button_text: aurora_refresh_button_text;
         refresh_button_enabled: aurora_refresh_button_enabled;
         aurora_forecast_error: aurora_forecast_error;
@@ -1313,10 +1304,7 @@ export component MainWindow inherits Window {
         wsa_enlil_error: aurora_wsa_enlil_error;
         nasa_viirs_image: aurora_nasa_viirs_image;
         nasa_viirs_error: aurora_nasa_viirs_error;
-        all_sky_errors: aurora_all_sky_errors;
         go_back => { show_aurora = false; }
-        all_sky_previous => { root.aurora_all_sky_previous(); }
-        all_sky_next => { root.aurora_all_sky_next(); }
         refresh_aurora => { root.aurora_refresh(); }
     }
 
