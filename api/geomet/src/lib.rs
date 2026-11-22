@@ -2,6 +2,18 @@ use anyhow::{anyhow, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+/// Web Mercator (EPSG:3857) helpers. The OpenStreetMap basemap tiles use
+/// EPSG:3857, so WMS overlays must use the same projection to line up.
+fn lon_to_mercator_x(lon: f64) -> f64 {
+    6378137.0 * lon.to_radians()
+}
+
+fn lat_to_mercator_y(lat: f64) -> f64 {
+    const R: f64 = 6378137.0;
+    let clamped = lat.clamp(-85.05112878, 85.05112878);
+    R * (std::f64::consts::PI / 4.0 + clamped.to_radians() / 2.0).tan().ln()
+}
 use serde_urlencoded;
 
 /// GeoMet API client for accessing Environment Canada's weather services
@@ -128,8 +140,15 @@ impl GeoMetAPI {
         height: u32,
         style: Option<&str>,
     ) -> Result<Vec<u8>> {
-        // For WMS 1.3.0 with EPSG:4326, BBOX format is: minY,minX,maxY,maxX
-        let bbox_str = format!("{},{},{},{}", bbox.min_lat, bbox.min_lon, bbox.max_lat, bbox.max_lon);
+        // BBOX is expressed in EPSG:3857 metres (x=easting, y=northing) so the
+        // overlays share the Web Mercator projection of the OSM basemap.
+        let bbox_str = format!(
+            "{},{},{},{}",
+            lon_to_mercator_x(bbox.min_lon),
+            lat_to_mercator_y(bbox.min_lat),
+            lon_to_mercator_x(bbox.max_lon),
+            lat_to_mercator_y(bbox.max_lat)
+        );
         let width_str = width.to_string();
         let height_str = height.to_string();
 
@@ -139,7 +158,7 @@ impl GeoMetAPI {
         params.insert("REQUEST", "GetMap");
         params.insert("LAYERS", layer);
         params.insert("STYLES", style.unwrap_or(""));  // Use specified style or default
-        params.insert("CRS", "EPSG:4326");
+        params.insert("CRS", "EPSG:3857");
         params.insert("BBOX", &bbox_str);
         params.insert("WIDTH", &width_str);
         params.insert("HEIGHT", &height_str);

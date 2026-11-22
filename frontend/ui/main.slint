@@ -358,7 +358,6 @@ export component MainWindow inherits Window {
                             source: map_image;
                             width: 100%;
                             height: 100%;
-                            y: -10px;
                             image-fit: contain;
                         }
                         Rectangle {
@@ -546,7 +545,6 @@ export component MainWindow inherits Window {
                             source: map_image;
                             width: 100%;
                             height: 100%;
-                            y: -10px;
                             image-fit: contain;
                             opacity: 70%;
                         }
@@ -577,6 +575,14 @@ export component MainWindow inherits Window {
                                 vertical-alignment: center;
                             }
                         }
+                        // Station position - centre of the bbox (lat +/-5, lon +/-12.7)
+                        Rectangle {
+                            width: 6px; height: 6px;
+                            background: #ff0000;
+                            border-radius: 3px;
+                            x: (parent.width - 6px) / 2;
+                            y: (parent.height - 6px) / 2;
+                        }
                     }
 
                     if (!loading && error_message == "" && root.main_image_index == 2) : Image {
@@ -593,7 +599,6 @@ export component MainWindow inherits Window {
                             source: map_image;
                             width: 100%;
                             height: 100%;
-                            y: -10px;
                             image-fit: contain;
                         }
                         Rectangle {
@@ -614,6 +619,14 @@ export component MainWindow inherits Window {
                             height: 40%;
                             x: parent.width * 0.42;
                             image-fit: contain;
+                        }
+                        // Station position - centre of the bbox (lat +/-5, lon +/-12.7)
+                        Rectangle {
+                            width: 6px; height: 6px;
+                            background: #ff0000;
+                            border-radius: 3px;
+                            x: (parent.width - 6px) / 2;
+                            y: (parent.height - 6px) / 2;
                         }
                     }
 
