@@ -366,65 +366,23 @@ export component PrecipitationPage inherits Rectangle {
             HorizontalLayout {
                 spacing: 10px;
 
-                // When Radar is selected, show Rain/Snow toggle instead of model layer toggles.
+                // Radar mode shows one composite: rain/snow chosen from the
+                // model's precipitation-type forecast, pixel by pixel.
                 if (selected_mode_index == 0) : Rectangle {
                     background: #181818;
-                    border-radius: 10px;
+                    border-radius: 8px;
                     height: 18px;
                     padding-left: 8px;
                     padding-right: 8px;
 
-                    HorizontalLayout {
-                        spacing: 4px;
-                        Text {
-                            text: "Radar:";
-                            color: #ffffff;
-                            font-size: 8px;
-                            vertical-alignment: center;
-                        }
-
-                        Rectangle {
-                            background: selected_layer_index == 6 ? #2f7fff : #303030;
-                            border-radius: 8px;
-                            padding-left: 6px;
-                            padding-right: 6px;
-                            height: 14px;
-
-                            Text {
-                                text: "Rain";
-                                color: #ffffff;
-                                font-size: 8px;
-                                vertical-alignment: center;
-                                horizontal-alignment: center;
-                            }
-
-                            TouchArea {
-                                clicked => { layer_changed(6); }
-                            }
-                        }
-
-                        Rectangle {
-                            background: selected_layer_index == 7 ? #2f7fff : #303030;
-                            border-radius: 8px;
-                            padding-left: 6px;
-                            padding-right: 6px;
-                            height: 14px;
-
-                            Text {
-                                text: "Snow";
-                                color: #ffffff;
-                                font-size: 8px;
-                                vertical-alignment: center;
-                                horizontal-alignment: center;
-                            }
-
-                            TouchArea {
-                                clicked => { layer_changed(7); }
-                            }
-                        }
+                    Text {
+                        text: "Radar: rain / snow blend";
+                        color: #cfd8dc;
+                        font-size: 8px;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
                     }
                 }
-
 
                 HorizontalLayout {
                     height: 50px;

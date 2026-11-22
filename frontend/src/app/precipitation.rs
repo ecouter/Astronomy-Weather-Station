@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use crate::app::refresh::RUNTIME;
-use crate::app::utils::decode_png_to_slint_image;
+use crate::app::utils::{blend_radar_by_type, decode_png_to_slint_image};
 use crate::app::coordinates;
 use crate::MainWindow;
 
@@ -68,6 +68,7 @@ pub enum PrecipitationLayer {
     BlowingSnowPresence = 27,
     IceFogVisibility = 28,
     TotalPrecipIntensityIndex = 29,
+    RadarBlended = 30,
 }
 
 // Cache keys (model, layer, hour_index)
@@ -282,16 +283,12 @@ pub async fn refresh_precipitation_data(
     };
     if radar_stale {
         match fetch_radar_now(&api, &bbox).await {
-            Ok((rain_bytes, snow_bytes, radar_time)) => {
+            Ok((blended_bytes, radar_time)) => {
                 {
                     let mut imgs = PRECIP_IMAGES.lock().unwrap();
                     imgs.insert(
-                        (PrecipitationModel::Radar, PrecipitationLayer::RadarRain, 0),
-                        rain_bytes,
-                    );
-                    imgs.insert(
-                        (PrecipitationModel::Radar, PrecipitationLayer::RadarSnow, 0),
-                        snow_bytes,
+                        (PrecipitationModel::Radar, PrecipitationLayer::RadarBlended, 0),
+                        blended_bytes,
                     );
                 }
                 {
@@ -340,7 +337,7 @@ fn precipitation_bbox(lat: f64, lon: f64) -> BoundingBox {
 async fn fetch_radar_now(
     api: &GeoMetAPI,
     bbox: &BoundingBox,
-) -> Result<(Vec<u8>, Vec<u8>, chrono::DateTime<Utc>)> {
+) -> Result<(Vec<u8>, chrono::DateTime<Utc>)> {
     // Use current UTC, snapped down to previous 30-min slot
     let now = Utc::now();
     let minute = now.minute();
@@ -391,7 +388,75 @@ async fn fetch_radar_now(
         }
     };
 
-    Ok((rain_bytes, snow_bytes, snapped))
+    if snow_bytes.is_empty() {
+        return Ok((rain_bytes, snapped));
+    }
+
+    // Fetch the model's precipitation-type layer and use it to choose rain vs
+    // snow radar pixel by pixel. Model runs are hourly, so use the current hour.
+    let model = *ACTIVE_MODEL.lock().unwrap();
+    let (type_layer, type_style) = match model {
+        PrecipitationModel::Hrdps => (
+            "HRDPS-WEonG_2.5km_DominantPrecipType",
+            "DominantPrecipType_Dis",
+        ),
+        PrecipitationModel::Rdps => (
+            "RDPS-WEonG_10km_DominantPrecipType",
+            "DominantPrecipType_Dis",
+        ),
+        PrecipitationModel::Radar => (
+            "HRDPS-WEonG_2.5km_DominantPrecipType",
+            "DominantPrecipType_Dis",
+        ),
+    };
+    let model_time = Utc::now()
+        .with_minute(0)
+        .and_then(|t| t.with_second(0))
+        .and_then(|t| t.with_nanosecond(0))
+        .unwrap_or(snapped);
+    let model_time_str = model_time.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    let type_bytes = match api
+        .get_wms_image_with_style(
+            type_layer,
+            &model_time_str,
+            bbox.clone(),
+            1280,
+            720,
+            Some(type_style),
+        )
+        .await
+    {
+        Ok(b) => b,
+        Err(e) => {
+            error!(
+                "precipitation: failed to fetch precipitation type {} at {}: {} (using radar signal only)",
+                type_layer, model_time_str, e
+            );
+            Vec::new()
+        }
+    };
+
+    let blended = if type_bytes.is_empty() {
+        info!("precipitation: blending radar by signal (no model type available)");
+        rain_bytes
+    } else {
+        match blend_radar_by_type(&rain_bytes, &snow_bytes, &type_bytes) {
+            Ok(b) => {
+                info!(
+                    "precipitation: blended radar rain/snow using {} at {}",
+                    type_layer, model_time_str
+                );
+                b
+            }
+            Err(e) => {
+                error!("precipitation: radar blend failed: {} (using rain radar)", e);
+                rain_bytes
+            }
+        }
+    };
+
+    Ok((blended, snapped))
 }
 
 async fn preload_model_core(
@@ -401,9 +466,16 @@ async fn preload_model_core(
     layer: PrecipitationLayer,
     hour: u32,
 ) -> Result<()> {
+    if model == PrecipitationModel::Radar && layer == PrecipitationLayer::RadarBlended {
+        // The blended image is built by fetch_radar_now from both radars + the
+        // model type layer; the generic WMS path would only fetch one of them.
+        return Ok(());
+    }
+
     let (layer_name, style) = match (model, layer) {
         (PrecipitationModel::Radar, PrecipitationLayer::RadarRain) => ("RADAR_1KM_RRAI", Some("Radar-Rain")),
         (PrecipitationModel::Radar, PrecipitationLayer::RadarSnow) => ("RADAR_1KM_RSNO", Some("Radar-Snow")),
+        (PrecipitationModel::Radar, PrecipitationLayer::RadarBlended) => ("RADAR_1KM_RRAI", Some("Radar-Rain")),
         (PrecipitationModel::Hrdps, PrecipitationLayer::PrecipType) => ("HRDPS-WEonG_2.5km_DominantPrecipType", None),
         (PrecipitationModel::Hrdps, PrecipitationLayer::PrecipProb) => ("HRDPS-WEonG_2.5km_Precip-Prob", None),
         (PrecipitationModel::Hrdps, PrecipitationLayer::PrecipAmount) => ("HRDPS-WEonG_2.5km_PrecipCondAmt", None),
@@ -573,7 +645,12 @@ pub fn update_precipitation_display(win: &MainWindow) {
     }
 
     // Legend
-    let legend_bytes = legends.get(&(model, layer)).cloned();
+    let legend_key = if model == PrecipitationModel::Radar {
+        (model, PrecipitationLayer::RadarRain)
+    } else {
+        (model, layer)
+    };
+    let legend_bytes = legends.get(&legend_key).cloned();
 
     if chosen_bytes.is_none() {
         error!(
@@ -585,7 +662,7 @@ pub fn update_precipitation_display(win: &MainWindow) {
     if legend_bytes.is_none() {
         info!(
             "precipitation: no legend available for model={:?} layer={:?}",
-            model, layer
+            legend_key.0, legend_key.1
         );
     }
 
@@ -648,6 +725,7 @@ pub fn update_precipitation_display(win: &MainWindow) {
         PrecipitationLayer::TempPressure => "Temp & Pressure",
         PrecipitationLayer::RadarRain => "Radar Rain",
         PrecipitationLayer::RadarSnow => "Radar Snow",
+        PrecipitationLayer::RadarBlended => "Radar (Rain + Snow)",
         PrecipitationLayer::DominantPrecipType => "Dominant Precip Type",
         PrecipitationLayer::InstantPrecipType => "Instant Precip Type",
         PrecipitationLayer::PrecipCharacter => "Precip Character",
@@ -821,8 +899,8 @@ fn handle_model_change(win: &MainWindow, index: i32) {
     win.set_precipitation_selected_time_index(default_hour as i32);
 
     if model == PrecipitationModel::Radar {
-        *ACTIVE_LAYER.lock().unwrap() = PrecipitationLayer::RadarRain;
-        win.set_precipitation_selected_layer_index(6);
+        *ACTIVE_LAYER.lock().unwrap() = PrecipitationLayer::RadarBlended;
+        win.set_precipitation_selected_layer_index(30);
     } else {
         *ACTIVE_LAYER.lock().unwrap() = PrecipitationLayer::PrecipType;
         win.set_precipitation_selected_layer_index(0);
@@ -842,19 +920,13 @@ fn handle_model_change(win: &MainWindow, index: i32) {
         RUNTIME.spawn(async move {
             if let Ok(api) = GeoMetAPI::new() {
                 match fetch_radar_now(&api, &bbox).await {
-                    Ok((rain, snow, when)) => {
+                    Ok((blended, when)) => {
                         {
                             let mut imgs = PRECIP_IMAGES.lock().unwrap();
                             imgs.insert(
-                                (PrecipitationModel::Radar, PrecipitationLayer::RadarRain, 0),
-                                rain,
+                                (PrecipitationModel::Radar, PrecipitationLayer::RadarBlended, 0),
+                                blended,
                             );
-                            if !snow.is_empty() {
-                                imgs.insert(
-                                    (PrecipitationModel::Radar, PrecipitationLayer::RadarSnow, 0),
-                                    snow,
-                                );
-                            }
                         }
                         {
                             let mut last = LAST_RADAR_FETCH.lock().unwrap();
@@ -891,8 +963,7 @@ fn handle_layer_change(win: &MainWindow, index: i32) {
         3 => PrecipitationLayer::FreezingMixed,
         4 => PrecipitationLayer::SnowDepth,
         5 => PrecipitationLayer::TempPressure,
-        6 => PrecipitationLayer::RadarRain,
-        7 => PrecipitationLayer::RadarSnow,
+        6 | 7 | 30 => PrecipitationLayer::RadarBlended,
         _ => PrecipitationLayer::PrecipType,
     };
     *ACTIVE_LAYER.lock().unwrap() = layer;
