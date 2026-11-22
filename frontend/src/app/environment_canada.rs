@@ -568,7 +568,7 @@ pub fn setup_environment_canada_callbacks(main_window: &MainWindow) {
     });
 }
 
-pub async fn update_environment_canada_images(main_window: &MainWindow) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn update_environment_canada_images(main_window: slint::Weak<MainWindow>) -> Result<(), String> {
     use environment_canada::{EnvironmentCanadaAPI, ForecastType, Region};
     use chrono::{Utc, Timelike, Duration};
 
@@ -615,7 +615,7 @@ pub async fn update_environment_canada_images(main_window: &MainWindow) -> Resul
     }
 
     // Create API instance
-    let api = EnvironmentCanadaAPI::new()?;
+    let api = EnvironmentCanadaAPI::new().map_err(|e| e.to_string())?;
 
     // Fetch multiple hours for each forecast type concurrently
     // Clouds, Surface Wind, Temperature, Transparency, Relative Humidity: hours 1-24
@@ -628,10 +628,10 @@ pub async fn update_environment_canada_images(main_window: &MainWindow) -> Resul
         model_run_str: &str,
         region: Region,
         hours: Vec<u32>,
-    ) -> Result<Vec<Vec<u8>>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<Vec<u8>>, String> {
         let mut tasks = Vec::new();
         for hour in hours {
-            let api_clone = EnvironmentCanadaAPI::new()?;
+            let api_clone = EnvironmentCanadaAPI::new().map_err(|e| e.to_string())?;
             let model_run_clone = model_run_str.to_string();
             let task = tokio::spawn(async move {
                 match api_clone.fetch_forecast(forecast_type, &model_run_clone, region, hour).await {
@@ -721,19 +721,23 @@ pub async fn update_environment_canada_images(main_window: &MainWindow) -> Resul
         *ENV_CANADA_RELATIVE_HUMIDITY_INDEX.lock().unwrap() = relative_humidity_index;
     }
 
-    // Update UI with first images
-    update_env_canada_clouds_display(main_window);
-    update_env_canada_surface_wind_display(main_window);
-    update_env_canada_seeing_display(main_window);
-    update_env_canada_temperature_display(main_window);
-    update_env_canada_transparency_display(main_window);
-    update_env_canada_relative_humidity_display(main_window);
+    // Apply UI updates on the Slint event loop (MainWindow is !Send).
+    main_window
+        .upgrade_in_event_loop(|win| {
+            update_env_canada_clouds_display(&win);
+            update_env_canada_surface_wind_display(&win);
+            update_env_canada_seeing_display(&win);
+            update_env_canada_temperature_display(&win);
+            update_env_canada_transparency_display(&win);
+            update_env_canada_relative_humidity_display(&win);
 
-    // Set model run info for UI
-    {
-        let model_run_info = ENV_CANADA_MODEL_RUN_INFO.lock().unwrap();
-        main_window.set_env_model_run_info(model_run_info.clone().into());
-    }
+            let model_run_info = ENV_CANADA_MODEL_RUN_INFO.lock().unwrap();
+            win.set_env_model_run_info(model_run_info.clone().into());
+            win.set_last_env_canada_update(
+                chrono::Local::now().format("%H:%M").to_string().into(),
+            );
+        })
+        .ok();
 
 
 

@@ -201,3 +201,87 @@ pub fn parse_hour(time_str: &str) -> Result<u32, Box<dyn std::error::Error>> {
     let hour_str = time_str.split(':').next().ok_or("Invalid time format")?;
     Ok(hour_str.parse()?)
 }
+
+/// Combine the rain and snow radar composites into one map. The model's
+/// DominantPrecipType layer decides, per pixel, which radar is appropriate:
+/// liquid types use the rain radar, frozen types use the snow radar. Where the
+/// model has no data (or neither radar has signal) the other radar is used as
+/// a fallback so precipitation is never silently dropped.
+pub fn blend_radar_by_type(
+    rain_data: &[u8],
+    snow_data: &[u8],
+    type_data: &[u8],
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    use image::{ImageFormat, RgbaImage};
+
+    let rain = image::load_from_memory_with_format(rain_data, ImageFormat::Png)?.to_rgba8();
+    let snow = image::load_from_memory_with_format(snow_data, ImageFormat::Png)?.to_rgba8();
+    let types = image::load_from_memory_with_format(type_data, ImageFormat::Png)?.to_rgba8();
+
+    let (width, height) = rain.dimensions();
+    if snow.dimensions() != (width, height) || types.dimensions() != (width, height) {
+        return Err("radar and precipitation-type images must have the same dimensions".into());
+    }
+
+    // Colours from the GeoMet DominantPrecipType legend.
+    const FROZEN: &[[u8; 3]] = &[
+        [166, 206, 238], // Snow
+        [233, 127, 211], // Ice Pellets
+        [249, 136, 36],  // Freezing Drizzle
+        [238, 94, 62],   // Freezing Rain
+    ];
+    const LIQUID: &[[u8; 3]] = &[
+        [188, 231, 190], // Rain
+        [249, 225, 118], // Drizzle
+    ];
+
+    fn matches(colour: [u8; 3], palette: &[[u8; 3]]) -> bool {
+        palette.iter().any(|c| {
+            (colour[0] as i16 - c[0] as i16).abs() <= 12
+                && (colour[1] as i16 - c[1] as i16).abs() <= 12
+                && (colour[2] as i16 - c[2] as i16).abs() <= 12
+        })
+    }
+
+    let rp = rain.as_raw();
+    let sp = snow.as_raw();
+    let tp = types.as_raw();
+    let mut out = vec![0u8; rp.len()];
+
+    for idx in 0..(width as usize * height as usize) {
+        let o = idx * 4;
+        let rain_alpha = rp[o + 3];
+        let snow_alpha = sp[o + 3];
+
+        let use_snow = if tp[o + 3] > 0 {
+            let colour = [tp[o], tp[o + 1], tp[o + 2]];
+            if matches(colour, FROZEN) {
+                true
+            } else if matches(colour, LIQUID) {
+                false
+            } else {
+                snow_alpha > rain_alpha
+            }
+        } else {
+            snow_alpha > rain_alpha
+        };
+
+        let (primary, fallback) = if use_snow {
+            (&sp[o..o + 4], &rp[o..o + 4])
+        } else {
+            (&rp[o..o + 4], &sp[o..o + 4])
+        };
+
+        if primary[3] > 0 {
+            out[o..o + 4].copy_from_slice(primary);
+        } else {
+            out[o..o + 4].copy_from_slice(fallback);
+        }
+    }
+
+    let blended = RgbaImage::from_raw(width, height, out)
+        .ok_or("failed to build blended radar image")?;
+    let mut bytes = Vec::new();
+    blended.write_to(&mut std::io::Cursor::new(&mut bytes), ImageFormat::Png)?;
+    Ok(bytes)
+}

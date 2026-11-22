@@ -6,7 +6,8 @@ use slint::ComponentHandle;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crate::app::utils::decode_png_to_slint_image;
+use crate::app::refresh::RUNTIME;
+use crate::app::utils::{blend_radar_by_type, decode_png_to_slint_image};
 use crate::app::coordinates;
 use crate::MainWindow;
 
@@ -67,6 +68,7 @@ pub enum PrecipitationLayer {
     BlowingSnowPresence = 27,
     IceFogVisibility = 28,
     TotalPrecipIntensityIndex = 29,
+    RadarBlended = 30,
 }
 
 // Cache keys (model, layer, hour_index)
@@ -201,9 +203,9 @@ pub fn setup_precipitation_callbacks(main_window: &MainWindow) {
                 match coordinates::load_coordinates(&win) {
                     Ok((lat, lon)) => {
                         info!("Precipitation refresh: coordinates loaded successfully: lat={}, lon={}", lat, lon);
-                        let rt = tokio::runtime::Runtime::new().unwrap();
-                        rt.block_on(async move {
-                            if let Err(e) = refresh_precipitation_data(lat, lon, &win).await {
+                        let weak = win.as_weak();
+                        RUNTIME.spawn(async move {
+                            if let Err(e) = refresh_precipitation_data(lat, lon, weak).await {
                                 error!("Precipitation manual refresh failed: {e}");
                             }
                         });
@@ -254,7 +256,7 @@ pub async fn fetch_initial_precipitation(lat: f64, lon: f64) -> Result<()> {
 pub async fn refresh_precipitation_data(
     lat: f64,
     lon: f64,
-    main_window: &MainWindow,
+    main_window: slint::Weak<MainWindow>,
 ) -> Result<()> {
     // Clear all caches for manual refresh
     {
@@ -273,33 +275,33 @@ pub async fn refresh_precipitation_data(
     let bbox = precipitation_bbox(lat, lon);
     let now = Utc::now();
 
-    // Radar every 30 minutes
-    {
-        let mut last = LAST_RADAR_FETCH.lock().unwrap();
-        if last
-            .map(|t| now.signed_duration_since(t) >= ChronoDuration::minutes(30))
+    // Radar every 30 minutes. The lock guard is dropped before the await.
+    let radar_stale = {
+        let last = LAST_RADAR_FETCH.lock().unwrap();
+        last.map(|t| now.signed_duration_since(t) >= ChronoDuration::minutes(30))
             .unwrap_or(true)
-        {
-            match fetch_radar_now(&api, &bbox).await {
-                Ok((rain_bytes, snow_bytes, radar_time)) => {
+    };
+    if radar_stale {
+        match fetch_radar_now(&api, &bbox).await {
+            Ok((blended_bytes, radar_time)) => {
+                {
                     let mut imgs = PRECIP_IMAGES.lock().unwrap();
                     imgs.insert(
-                        (PrecipitationModel::Radar, PrecipitationLayer::RadarRain, 0),
-                        rain_bytes,
+                        (PrecipitationModel::Radar, PrecipitationLayer::RadarBlended, 0),
+                        blended_bytes,
                     );
-                    imgs.insert(
-                        (PrecipitationModel::Radar, PrecipitationLayer::RadarSnow, 0),
-                        snow_bytes,
-                    );
+                }
+                {
+                    let mut last = LAST_RADAR_FETCH.lock().unwrap();
                     *last = Some(radar_time);
-                    error!(
-                        "precipitation: radar refresh ok at {}",
-                        radar_time.to_rfc3339()
-                    );
                 }
-                Err(e) => {
-                    error!("precipitation: radar refresh FAILED: {}", e);
-                }
+                error!(
+                    "precipitation: radar refresh ok at {}",
+                    radar_time.to_rfc3339()
+                );
+            }
+            Err(e) => {
+                error!("precipitation: radar refresh FAILED: {}", e);
             }
         }
     }
@@ -317,13 +319,9 @@ pub async fn refresh_precipitation_data(
     }
 
     // Push updated current selection into UI
-    let w = main_window.as_weak();
-    slint::invoke_from_event_loop(move || {
-        if let Some(win) = w.upgrade() {
-            update_precipitation_display(&win);
-        }
-    })
-    .ok();
+    main_window
+        .upgrade_in_event_loop(|win| update_precipitation_display(&win))
+        .ok();
 
     error!("precipitation: manual refresh completed successfully");
     Ok(())
@@ -339,7 +337,7 @@ fn precipitation_bbox(lat: f64, lon: f64) -> BoundingBox {
 async fn fetch_radar_now(
     api: &GeoMetAPI,
     bbox: &BoundingBox,
-) -> Result<(Vec<u8>, Vec<u8>, chrono::DateTime<Utc>)> {
+) -> Result<(Vec<u8>, chrono::DateTime<Utc>)> {
     // Use current UTC, snapped down to previous 30-min slot
     let now = Utc::now();
     let minute = now.minute();
@@ -390,7 +388,75 @@ async fn fetch_radar_now(
         }
     };
 
-    Ok((rain_bytes, snow_bytes, snapped))
+    if snow_bytes.is_empty() {
+        return Ok((rain_bytes, snapped));
+    }
+
+    // Fetch the model's precipitation-type layer and use it to choose rain vs
+    // snow radar pixel by pixel. Model runs are hourly, so use the current hour.
+    let model = *ACTIVE_MODEL.lock().unwrap();
+    let (type_layer, type_style) = match model {
+        PrecipitationModel::Hrdps => (
+            "HRDPS-WEonG_2.5km_DominantPrecipType",
+            "DominantPrecipType_Dis",
+        ),
+        PrecipitationModel::Rdps => (
+            "RDPS-WEonG_10km_DominantPrecipType",
+            "DominantPrecipType_Dis",
+        ),
+        PrecipitationModel::Radar => (
+            "HRDPS-WEonG_2.5km_DominantPrecipType",
+            "DominantPrecipType_Dis",
+        ),
+    };
+    let model_time = Utc::now()
+        .with_minute(0)
+        .and_then(|t| t.with_second(0))
+        .and_then(|t| t.with_nanosecond(0))
+        .unwrap_or(snapped);
+    let model_time_str = model_time.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    let type_bytes = match api
+        .get_wms_image_with_style(
+            type_layer,
+            &model_time_str,
+            bbox.clone(),
+            1280,
+            720,
+            Some(type_style),
+        )
+        .await
+    {
+        Ok(b) => b,
+        Err(e) => {
+            error!(
+                "precipitation: failed to fetch precipitation type {} at {}: {} (using radar signal only)",
+                type_layer, model_time_str, e
+            );
+            Vec::new()
+        }
+    };
+
+    let blended = if type_bytes.is_empty() {
+        info!("precipitation: blending radar by signal (no model type available)");
+        rain_bytes
+    } else {
+        match blend_radar_by_type(&rain_bytes, &snow_bytes, &type_bytes) {
+            Ok(b) => {
+                info!(
+                    "precipitation: blended radar rain/snow using {} at {}",
+                    type_layer, model_time_str
+                );
+                b
+            }
+            Err(e) => {
+                error!("precipitation: radar blend failed: {} (using rain radar)", e);
+                rain_bytes
+            }
+        }
+    };
+
+    Ok((blended, snapped))
 }
 
 async fn preload_model_core(
@@ -400,9 +466,16 @@ async fn preload_model_core(
     layer: PrecipitationLayer,
     hour: u32,
 ) -> Result<()> {
+    if model == PrecipitationModel::Radar && layer == PrecipitationLayer::RadarBlended {
+        // The blended image is built by fetch_radar_now from both radars + the
+        // model type layer; the generic WMS path would only fetch one of them.
+        return Ok(());
+    }
+
     let (layer_name, style) = match (model, layer) {
         (PrecipitationModel::Radar, PrecipitationLayer::RadarRain) => ("RADAR_1KM_RRAI", Some("Radar-Rain")),
         (PrecipitationModel::Radar, PrecipitationLayer::RadarSnow) => ("RADAR_1KM_RSNO", Some("Radar-Snow")),
+        (PrecipitationModel::Radar, PrecipitationLayer::RadarBlended) => ("RADAR_1KM_RRAI", Some("Radar-Rain")),
         (PrecipitationModel::Hrdps, PrecipitationLayer::PrecipType) => ("HRDPS-WEonG_2.5km_DominantPrecipType", None),
         (PrecipitationModel::Hrdps, PrecipitationLayer::PrecipProb) => ("HRDPS-WEonG_2.5km_Precip-Prob", None),
         (PrecipitationModel::Hrdps, PrecipitationLayer::PrecipAmount) => ("HRDPS-WEonG_2.5km_PrecipCondAmt", None),
@@ -463,12 +536,14 @@ async fn preload_model_core(
         _ => return Ok(()),
     };
 
-    let mut imgs = PRECIP_IMAGES.lock().unwrap();
-    let mut legends = PRECIP_LEGENDS.lock().unwrap();
-
-    // Legend (once per (model, layer))
+    // Legend (once per (model, layer)). Never hold a MutexGuard across an await:
+    // the future must be Send so it can run on the shared Tokio runtime.
     let legend_key = (model, layer);
-    if !legends.contains_key(&legend_key) {
+    let legend_needs_fetch = {
+        let legends = PRECIP_LEGENDS.lock().unwrap();
+        !legends.contains_key(&legend_key)
+    };
+    if legend_needs_fetch {
         if let Ok(lg) = api
             .get_legend_graphic(layer_name, style, "image/png", None)
             .await
@@ -479,7 +554,7 @@ async fn preload_model_core(
                 layer,
                 lg.len()
             );
-            legends.insert(legend_key, lg);
+            PRECIP_LEGENDS.lock().unwrap().insert(legend_key, lg);
         } else {
             error!(
                 "precipitation: FAILED to load legend for {:?} {:?}",
@@ -490,7 +565,7 @@ async fn preload_model_core(
 
     // If we already have this (model,layer,hour), do nothing.
     let key = (model, layer, hour);
-    if imgs.contains_key(&key) {
+    if PRECIP_IMAGES.lock().unwrap().contains_key(&key) {
         return Ok(());
     }
 
@@ -525,7 +600,7 @@ async fn preload_model_core(
                 hour,
                 bytes.len()
             );
-            imgs.insert(key, bytes);
+            PRECIP_IMAGES.lock().unwrap().insert(key, bytes);
         }
         Err(e) => {
             error!(
@@ -570,7 +645,12 @@ pub fn update_precipitation_display(win: &MainWindow) {
     }
 
     // Legend
-    let legend_bytes = legends.get(&(model, layer)).cloned();
+    let legend_key = if model == PrecipitationModel::Radar {
+        (model, PrecipitationLayer::RadarRain)
+    } else {
+        (model, layer)
+    };
+    let legend_bytes = legends.get(&legend_key).cloned();
 
     if chosen_bytes.is_none() {
         error!(
@@ -582,7 +662,7 @@ pub fn update_precipitation_display(win: &MainWindow) {
     if legend_bytes.is_none() {
         info!(
             "precipitation: no legend available for model={:?} layer={:?}",
-            model, layer
+            legend_key.0, legend_key.1
         );
     }
 
@@ -645,6 +725,7 @@ pub fn update_precipitation_display(win: &MainWindow) {
         PrecipitationLayer::TempPressure => "Temp & Pressure",
         PrecipitationLayer::RadarRain => "Radar Rain",
         PrecipitationLayer::RadarSnow => "Radar Snow",
+        PrecipitationLayer::RadarBlended => "Radar (Rain + Snow)",
         PrecipitationLayer::DominantPrecipType => "Dominant Precip Type",
         PrecipitationLayer::InstantPrecipType => "Instant Precip Type",
         PrecipitationLayer::PrecipCharacter => "Precip Character",
@@ -741,29 +822,24 @@ fn lazy_fetch_missing_image(win: &MainWindow, model: PrecipitationModel, layer: 
 
     let win_weak = win.as_weak();
 
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async move {
-            if let Ok(api) = GeoMetAPI::new() {
-                if let Err(e) = preload_model_core(&api, model, &bbox, layer, hour).await {
-                    error!(
-                        "precipitation: lazy fetch failed for {:?} {:?} T+{}h: {}",
-                        model, layer, hour, e
-                    );
-                } else {
-                    info!("precipitation: lazy fetch completed for {:?} {:?} T+{}h", model, layer, hour);
-                }
+    RUNTIME.spawn(async move {
+        if let Ok(api) = GeoMetAPI::new() {
+            if let Err(e) = preload_model_core(&api, model, &bbox, layer, hour).await {
+                error!(
+                    "precipitation: lazy fetch failed for {:?} {:?} T+{}h: {}",
+                    model, layer, hour, e
+                );
             } else {
-                error!("precipitation: failed to create GeoMetAPI for lazy fetch");
+                info!("precipitation: lazy fetch completed for {:?} {:?} T+{}h", model, layer, hour);
             }
+        } else {
+            error!("precipitation: failed to create GeoMetAPI for lazy fetch");
+        }
 
-            // Update display after fetch attempt
-            slint::invoke_from_event_loop(move || {
-                if let Some(win) = win_weak.upgrade() {
-                    update_precipitation_display(&win);
-                }
-            }).ok();
-        });
+        // Update display after the fetch attempt, on the Slint event loop.
+        win_weak
+            .upgrade_in_event_loop(|win| update_precipitation_display(&win))
+            .ok();
     });
 }
 
@@ -823,8 +899,8 @@ fn handle_model_change(win: &MainWindow, index: i32) {
     win.set_precipitation_selected_time_index(default_hour as i32);
 
     if model == PrecipitationModel::Radar {
-        *ACTIVE_LAYER.lock().unwrap() = PrecipitationLayer::RadarRain;
-        win.set_precipitation_selected_layer_index(6);
+        *ACTIVE_LAYER.lock().unwrap() = PrecipitationLayer::RadarBlended;
+        win.set_precipitation_selected_layer_index(30);
     } else {
         *ACTIVE_LAYER.lock().unwrap() = PrecipitationLayer::PrecipType;
         win.set_precipitation_selected_layer_index(0);
@@ -841,52 +917,37 @@ fn handle_model_change(win: &MainWindow, index: i32) {
             precipitation_bbox(45.0, -75.0)
         };
 
-        std::thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async move {
-                if let Ok(api) = GeoMetAPI::new() {
-                    match fetch_radar_now(&api, &bbox).await {
-                        Ok((rain, snow, when)) => {
-                            {
-                                let mut imgs = PRECIP_IMAGES.lock().unwrap();
-                                // Map:
-                                // - RADAR_1KM_RRAI -> RadarRain
-                                // - RADAR_1KM_RSNO -> RadarSnow
-                                imgs.insert(
-                                    (PrecipitationModel::Radar, PrecipitationLayer::RadarRain, 0),
-                                    rain,
-                                );
-                                if !snow.is_empty() {
-                                    imgs.insert(
-                                        (PrecipitationModel::Radar, PrecipitationLayer::RadarSnow, 0),
-                                        snow,
-                                    );
-                                }
-                            }
-                            {
-                                let mut last = LAST_RADAR_FETCH.lock().unwrap();
-                                *last = Some(when);
-                            }
-                            info!(
-                                "precipitation: radar images cached for slot {}",
-                                when.to_rfc3339()
+        RUNTIME.spawn(async move {
+            if let Ok(api) = GeoMetAPI::new() {
+                match fetch_radar_now(&api, &bbox).await {
+                    Ok((blended, when)) => {
+                        {
+                            let mut imgs = PRECIP_IMAGES.lock().unwrap();
+                            imgs.insert(
+                                (PrecipitationModel::Radar, PrecipitationLayer::RadarBlended, 0),
+                                blended,
                             );
                         }
-                        Err(e) => {
-                            error!("precipitation: failed to fetch radar on model change: {}", e);
+                        {
+                            let mut last = LAST_RADAR_FETCH.lock().unwrap();
+                            *last = Some(when);
                         }
+                        info!(
+                            "precipitation: radar images cached for slot {}",
+                            when.to_rfc3339()
+                        );
                     }
-                } else {
-                    error!("precipitation: failed to create GeoMetAPI for radar on model change");
+                    Err(e) => {
+                        error!("precipitation: failed to fetch radar on model change: {}", e);
+                    }
                 }
+            } else {
+                error!("precipitation: failed to create GeoMetAPI for radar on model change");
+            }
 
-                slint::invoke_from_event_loop(move || {
-                    if let Some(w) = win_weak.upgrade() {
-                        update_precipitation_display(&w);
-                    }
-                })
+            win_weak
+                .upgrade_in_event_loop(|w| update_precipitation_display(&w))
                 .ok();
-            });
         });
     } else {
         // HRDPS/RDPS: display with existing cache; specific hours are lazy-fetched in handle_time_change.
@@ -902,8 +963,7 @@ fn handle_layer_change(win: &MainWindow, index: i32) {
         3 => PrecipitationLayer::FreezingMixed,
         4 => PrecipitationLayer::SnowDepth,
         5 => PrecipitationLayer::TempPressure,
-        6 => PrecipitationLayer::RadarRain,
-        7 => PrecipitationLayer::RadarSnow,
+        6 | 7 | 30 => PrecipitationLayer::RadarBlended,
         _ => PrecipitationLayer::PrecipType,
     };
     *ACTIVE_LAYER.lock().unwrap() = layer;
@@ -943,45 +1003,36 @@ fn handle_time_change(win: &MainWindow, index: i32) {
 
     let win_weak = win.as_weak();
 
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async move {
-            // Ensure we have an API client
-            if let Ok(api) = GeoMetAPI::new() {
-                // Only fetch if this (model,layer,hour) is missing
-                let need_fetch = {
-                    let imgs = PRECIP_IMAGES.lock().unwrap();
-                    !imgs.contains_key(&(model, layer, hour))
-                };
-
-                if need_fetch {
-                    if let Err(e) = preload_model_core(&api, model, &bbox, layer, hour).await {
-                        error!(
-                            "precipitation: failed to lazy-load {:?} {:?} T+{}h: {}",
-                            model, layer, hour, e
-                        );
-                    }
-                }
-            } else {
-                error!("precipitation: failed to create GeoMetAPI in time-change handler");
-            }
-
-            // Now that data is guaranteed attempted, update ACTIVE_HOUR + Slint UI in event loop
-            slint::invoke_from_event_loop(move || {
-                if let Some(win) = win_weak.upgrade() {
-                    *ACTIVE_HOUR.lock().unwrap() = hour;
-                    win.set_precipitation_selected_time_index(hour as i32);
-
-                    info!(
-                        "precipitation: time changed to T+{}h for model={:?}, layer={:?} (UI updated after fetch)",
-                        hour, model, layer
+    RUNTIME.spawn(async move {
+        if let Ok(api) = GeoMetAPI::new() {
+            let need_fetch = {
+                let imgs = PRECIP_IMAGES.lock().unwrap();
+                !imgs.contains_key(&(model, layer, hour))
+            };
+            if need_fetch {
+                if let Err(e) = preload_model_core(&api, model, &bbox, layer, hour).await {
+                    error!(
+                        "precipitation: failed to lazy-load {:?} {:?} T+{}h: {}",
+                        model, layer, hour, e
                     );
-
-                    update_precipitation_display(&win);
                 }
+            }
+        } else {
+            error!("precipitation: failed to create GeoMetAPI in time-change handler");
+        }
+
+        // Now that data is guaranteed attempted, update ACTIVE_HOUR + Slint UI.
+        win_weak
+            .upgrade_in_event_loop(move |win| {
+                *ACTIVE_HOUR.lock().unwrap() = hour;
+                win.set_precipitation_selected_time_index(hour as i32);
+                info!(
+                    "precipitation: time changed to T+{}h for model={:?}, layer={:?} (UI updated after fetch)",
+                    hour, model, layer
+                );
+                update_precipitation_display(&win);
             })
             .ok();
-        });
     });
 }
 
@@ -1056,48 +1107,36 @@ fn handle_load_all_hours(win: &MainWindow) {
 
     let win_weak = win.as_weak();
 
-    std::thread::spawn(move || {
-        let mut handles = Vec::new();
-
+    RUNTIME.spawn(async move {
+        // One task per hour on the shared runtime instead of 49 threads + runtimes.
+        let mut set = tokio::task::JoinSet::new();
         for hour in 0..=max_hours {
             let bbox_clone = bbox.clone();
-            let handle = std::thread::spawn(move || {
-                let rt = tokio::runtime::Runtime::new().unwrap();
-                rt.block_on(async move {
-                    if let Ok(api) = GeoMetAPI::new() {
-                        if let Err(e) = preload_model_core(&api, model, &bbox_clone, layer, hour).await {
-                            error!(
-                                "precipitation: failed to load {:?} {:?} T+{}h: {}",
-                                model, layer, hour, e
-                            );
-                        } else {
-                            info!("precipitation: loaded {:?} {:?} T+{}h", model, layer, hour);
-                        }
+            set.spawn(async move {
+                if let Ok(api) = GeoMetAPI::new() {
+                    if let Err(e) = preload_model_core(&api, model, &bbox_clone, layer, hour).await {
+                        error!(
+                            "precipitation: failed to load {:?} {:?} T+{}h: {}",
+                            model, layer, hour, e
+                        );
                     } else {
-                        error!("precipitation: failed to create GeoMetAPI for hour {}", hour);
+                        info!("precipitation: loaded {:?} {:?} T+{}h", model, layer, hour);
                     }
-                });
+                } else {
+                    error!("precipitation: failed to create GeoMetAPI for hour {}", hour);
+                }
             });
-            handles.push(handle);
         }
-
-        // Wait for all threads to complete
-        for handle in handles {
-            if let Err(e) = handle.join() {
-                error!("precipitation: thread join failed: {:?}", e);
-            }
-        }
+        while set.join_next().await.is_some() {}
 
         info!("precipitation: all hours loaded for {:?} {:?}", model, layer);
 
-        // Update UI after completion
-        slint::invoke_from_event_loop(move || {
-            if let Some(win) = win_weak.upgrade() {
+        win_weak
+            .upgrade_in_event_loop(|win| {
                 win.set_precipitation_load_all_hours_button_text("all hours fetched".into());
                 win.set_precipitation_load_all_hours_button_enabled(false);
-            }
-        })
-        .ok();
+            })
+            .ok();
     });
 }
 

@@ -3,27 +3,10 @@ use std::error::Error;
 use once_cell::sync::Lazy;
 use slint::ComponentHandle;
 use crate::MainWindow;
+use crate::app::refresh::spawn;
 use crate::app::utils::{decode_png_to_slint_image, resize_png_if_needed};
 use crate::app::coordinates::load_coordinates;
-use chrono::{Duration, Timelike, Utc};
-use tokio::time::Duration as TokioDuration;
-
-pub static ALL_SKY_IMAGES: Lazy<Mutex<Vec<Vec<u8>>>> = Lazy::new(|| Mutex::new(Vec::new()));
-pub static ALL_SKY_INDEX: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::new(0));
-
-// Location names for all-sky images in the same order as the API
-const ALL_SKY_LOCATIONS: &[&str] = &[
-    "Kjell Henriksen Observatory, Norway",
-    "Hankasalmi, Finland",
-    "Yellowknife, Canada",
-    "Athabasca, Canada",
-    "Glacier National Park, USA",
-    "Hansville, USA",
-    "Isle Royale National Park, USA",
-    "Heiligenblut, Austria",
-    "Calgary, Canada",
-    "Hobart, Australia",
-];
+use chrono::{Duration, Utc};
 
 pub fn setup_aurora_callbacks(main_window: &MainWindow) {
     // Refresh callback
@@ -51,104 +34,12 @@ pub fn setup_aurora_callbacks(main_window: &MainWindow) {
                 // Clone weak for async use in background thread
                 let weak_clone = window.as_weak();
 
-                // Spawn background thread for async refresh to avoid freezing UI
-                std::thread::spawn(move || {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
-                    rt.block_on(async move {
-                        if let Err(e) = update_aurora_images(weak_clone, lat, lon).await {
-                            error!("Aurora refresh failed: {}", e);
-                        }
-                    });
+                // Fetch on the shared runtime; the UI is never blocked.
+                spawn(async move {
+                    if let Err(e) = update_aurora_images(weak_clone, lat, lon).await {
+                        error!("Aurora refresh failed: {}", e);
+                    }
                 });
-            }
-        }).unwrap();
-    });
-
-    // All-sky navigation
-    let main_window_weak = main_window.as_weak();
-    main_window.on_aurora_all_sky_previous(move || {
-        debug!("Aurora all-sky previous button clicked");
-        let window_weak = main_window_weak.clone();
-        slint::invoke_from_event_loop(move || {
-            debug!("Processing Aurora all-sky previous in event loop");
-            let window = window_weak.upgrade();
-            if let Some(window) = window {
-                debug!("Window upgraded successfully");
-                if let Ok(images) = ALL_SKY_IMAGES.try_lock() {
-                    debug!("ALL_SKY_IMAGES lock acquired, {} images", images.len());
-                    if let Ok(mut index) = ALL_SKY_INDEX.try_lock() {
-                        debug!("ALL_SKY_INDEX lock acquired, current index: {}", *index);
-                        if !images.is_empty() {
-                            if *index == 0 {
-                                *index = images.len() - 1;
-                            } else {
-                                *index -= 1;
-                            }
-                            debug!("New index: {}", *index);
-                            let current_image_data = &images[*index];
-                            let location_name = ALL_SKY_LOCATIONS.get(*index).unwrap_or(&"Unknown Location");
-                            match decode_png_to_slint_image(current_image_data) {
-                                Ok(slint_image) => {
-                                    window.set_aurora_all_sky_image(slint_image);
-                                    window.set_aurora_all_sky_location_name(location_name.to_string().into());
-                                }
-                                Err(e) => {
-                                    error!("Failed to decode Aurora all-sky image: {}", e);
-                                }
-                            }
-                        } else {
-                            debug!("No Aurora all-sky images available");
-                        }
-                    } else {
-                        debug!("Failed to acquire ALL_SKY_INDEX lock");
-                    }
-                } else {
-                    debug!("Failed to acquire ALL_SKY_IMAGES lock");
-                }
-            } else {
-                debug!("Failed to upgrade window weak reference");
-            }
-        }).unwrap();
-    });
-
-    let main_window_weak2 = main_window.as_weak();
-    main_window.on_aurora_all_sky_next(move || {
-        debug!("Aurora all-sky next button clicked");
-        let window_weak = main_window_weak2.clone();
-        slint::invoke_from_event_loop(move || {
-            debug!("Processing Aurora all-sky next in event loop");
-            let window = window_weak.upgrade();
-            if let Some(window) = window {
-                debug!("Window upgraded successfully");
-                if let Ok(images) = ALL_SKY_IMAGES.try_lock() {
-                    debug!("ALL_SKY_IMAGES lock acquired, {} images", images.len());
-                    if let Ok(mut index) = ALL_SKY_INDEX.try_lock() {
-                        debug!("ALL_SKY_INDEX lock acquired, current index: {}", *index);
-                        if !images.is_empty() {
-                            *index = (*index + 1) % images.len();
-                            debug!("New index: {}", *index);
-                            let current_image_data = &images[*index];
-                            let location_name = ALL_SKY_LOCATIONS.get(*index).unwrap_or(&"Unknown Location");
-                            match decode_png_to_slint_image(current_image_data) {
-                                Ok(slint_image) => {
-                                    window.set_aurora_all_sky_image(slint_image);
-                                    window.set_aurora_all_sky_location_name(location_name.to_string().into());
-                                }
-                                Err(e) => {
-                                    error!("Failed to decode Aurora all-sky image: {}", e);
-                                }
-                            }
-                        } else {
-                            debug!("No Aurora all-sky images available");
-                        }
-                    } else {
-                        debug!("Failed to acquire ALL_SKY_INDEX lock");
-                    }
-                } else {
-                    debug!("Failed to acquire ALL_SKY_IMAGES lock");
-                }
-            } else {
-                debug!("Failed to upgrade window weak reference");
             }
         }).unwrap();
     });
@@ -210,18 +101,10 @@ async fn fetch_and_update_single_image(
 pub async fn update_aurora_images(main_window_weak: slint::Weak<MainWindow>, lat: f64, lon: f64) -> Result<(), Box<dyn std::error::Error>> {
     use aurora::{fetch_aurora_forecast, fetch_ace_real_time_solar_wind, fetch_dscovr_solar_wind,
                      fetch_space_weather_overview, fetch_ace_epam, fetch_canadian_magnetic,
-                     fetch_alerts_timeline, fetch_all_aurora_images, fetch_tonights_aurora_forecast,
+                     fetch_alerts_timeline, fetch_tonights_aurora_forecast,
                      fetch_tomorrow_aurora_forecast, fetch_wsa_enlil, fetch_nasa_viirs};
 
     info!("Starting Aurora images update with coordinates: lat={}, lon={}", lat, lon);
-
-    // Compute time for all-sky images (UTC+1, floored to nearest half-hour)
-    let utc_plus_1 = Utc::now() + Duration::hours(1);
-    let floored_minute = if utc_plus_1.minute() < 30 { 0 } else { 30 };
-    let dt = utc_plus_1.with_minute(floored_minute).unwrap();
-    let all_sky_date_str = dt.format("%Y/%m/%d").to_string();
-    let all_sky_time_str = dt.format("%H%M").to_string();
-    let all_sky_time_param = format!("{}/{}", all_sky_date_str, all_sky_time_str);
 
     // Create clones for each async block to avoid borrow checker issues
     let weak1 = main_window_weak.clone();
@@ -309,98 +192,6 @@ pub async fn update_aurora_images(main_window_weak: slint::Weak<MainWindow>, lat
             }, "Alerts Timeline").await;
         },
 
-        // All-sky images (fetched as one unit)
-        async {
-            match fetch_all_aurora_images(all_sky_time_param).await {
-                Ok(all_sky_images_result) => {
-                    info!("Successfully fetched: All Sky Images");
-
-                    let all_sky_vec = vec![
-                        all_sky_images_result.kjell_henriksen_observatory_norway,
-                        all_sky_images_result.hankasalmi_finland,
-                        all_sky_images_result.yellowknife_canada,
-                        all_sky_images_result.athabasca_canada,
-                        all_sky_images_result.glacier_national_park_usa,
-                        all_sky_images_result.hansville_usa,
-                        all_sky_images_result.isle_royale_national_park_usa,
-                        all_sky_images_result.heiligenblut_austria,
-                        all_sky_images_result.calgary_canada,
-                        all_sky_images_result.hobart_australia,
-                    ];
-
-                    // Resize all-sky images if needed
-                    let mut resized_all_sky = Vec::new();
-                    for image_data in all_sky_vec {
-                        let resized = if image_data.is_empty() {
-                            Vec::new()
-                        } else {
-                            match resize_png_if_needed(image_data, 1920) {
-                                Ok(r) => {
-                                    info!("Successfully resized all-sky image");
-                                    r
-                                }
-                                Err(e) => {
-                                    error!("Failed to resize all-sky image: {}", e);
-                                    Vec::new()
-                                }
-                            }
-                        };
-                        resized_all_sky.push(resized);
-                    }
-
-                    // Store resized in global
-                    {
-                        *ALL_SKY_IMAGES.lock().unwrap() = resized_all_sky.clone();
-                    }
-
-                    // Update UI in event loop - decode inside the closure
-                    slint::invoke_from_event_loop(move || {
-                        if let Some(window) = main_window_weak.upgrade() {
-                            let mut slint_images = Vec::new();
-                            let mut error_flags = Vec::new();
-                            for image_data in &resized_all_sky {
-                                if !image_data.is_empty() {
-                                    match decode_png_to_slint_image(image_data) {
-                                        Ok(slint_image) => {
-                                            slint_images.push(slint_image);
-                                            error_flags.push(false);
-                                        }
-                                        Err(e) => {
-                                            error!("Failed to decode all-sky image: {}", e);
-                                            slint_images.push(slint::Image::default());
-                                            error_flags.push(true);
-                                        }
-                                    }
-                                } else {
-                                    slint_images.push(slint::Image::default());
-                                    error_flags.push(true);
-                                }
-                            }
-
-                            // Set the arrays
-                            window.set_aurora_all_sky_images(slint_images.as_slice().into());
-                            window.set_aurora_all_sky_errors(error_flags.as_slice().into());
-                            // Update current display
-                            update_all_sky_display(&window);
-                        }
-                    }).unwrap();
-                }
-                Err(e) => {
-                    error!("Failed to fetch All Sky Images: {}", e);
-                    slint::invoke_from_event_loop(move || {
-                        if let Some(window) = main_window_weak.upgrade() {
-                            *ALL_SKY_IMAGES.lock().unwrap() = vec![Vec::new(); 10];
-                            let default_images: Vec<slint::Image> = vec![slint::Image::default(); 10];
-                            let error_flags: Vec<bool> = vec![true; 10];
-                            window.set_aurora_all_sky_images(default_images.as_slice().into());
-                            window.set_aurora_all_sky_errors(error_flags.as_slice().into());
-                            update_all_sky_display(&window);
-                        }
-                    }).unwrap();
-                }
-            };
-        },
-
         async {
             let result = fetch_tonights_aurora_forecast().await;
             fetch_and_update_single_image(weak9, result, |mw, img, err| {
@@ -471,71 +262,34 @@ pub async fn update_aurora_images(main_window_weak: slint::Weak<MainWindow>, lat
     Ok(())
 }
 
-pub fn update_all_sky_display(main_window: &MainWindow) {
-    info!("Starting update_all_sky_display...");
-    let images = ALL_SKY_IMAGES.lock().unwrap();
-    let index = ALL_SKY_INDEX.lock().unwrap();
-    info!("Locked ALL_SKY_IMAGES and ALL_SKY_INDEX, images len: {}, index: {}", images.len(), *index);
-
-    if !images.is_empty() && *index < images.len() && !images[*index].is_empty() {
-        let current_image_data = &images[*index];
-        let location_name = ALL_SKY_LOCATIONS.get(*index).unwrap_or(&"Unknown Location");
-        info!("Displaying Aurora all-sky image (index: {}, location: {}, data len: {})", *index, location_name, current_image_data.len());
-
-        info!("Starting decode_png_to_slint_image for current image...");
-        match decode_png_to_slint_image(current_image_data) {
-            Ok(slint_image) => {
-                info!("Successfully decoded current all-sky image, setting UI...");
-                main_window.set_aurora_all_sky_image(slint_image);
-                main_window.set_aurora_all_sky_location_name(location_name.to_string().into());
-                info!("Set current all-sky image and location name");
-            }
-            Err(e) => {
-                error!("Failed to decode Aurora all-sky image: {}", e);
-            }
-        }
-    } else {
-        info!("No Aurora all-sky images available for display ({} images, index {})", images.len(), *index);
-    }
-    info!("update_all_sky_display completed");
-}
-
 fn start_refresh_countdown(main_window: &MainWindow) {
     let window_weak = main_window.as_weak();
 
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async move {
-            let mut interval = tokio::time::interval(TokioDuration::from_secs(1));
-            let mut remaining_seconds = 300; // 5 minutes
+    spawn(async move {
+        let mut remaining_seconds = 300; // 5 minutes
 
-            loop {
-                interval.tick().await;
-                remaining_seconds -= 1;
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            remaining_seconds -= 1;
 
-                if remaining_seconds <= 0 {
-                    // Countdown finished, re-enable button
-                    slint::invoke_from_event_loop(move || {
-                        if let Some(window) = window_weak.upgrade() {
-                            window.set_aurora_refresh_button_enabled(true);
-                            window.set_aurora_refresh_button_text("Refresh".into());
-                        }
-                    }).ok();
-                    break;
-                }
-
-                // Update button text with countdown
-                let minutes = remaining_seconds / 60;
-                let seconds = remaining_seconds % 60;
-                let countdown_text = format!("Refresh in {:02}:{:02}", minutes, seconds);
-
-                let window_weak_clone = window_weak.clone();
-                slint::invoke_from_event_loop(move || {
-                    if let Some(window) = window_weak_clone.upgrade() {
-                        window.set_aurora_refresh_button_text(countdown_text.into());
-                    }
-                }).ok();
+            if remaining_seconds <= 0 {
+                window_weak
+                    .upgrade_in_event_loop(|window| {
+                        window.set_aurora_refresh_button_enabled(true);
+                        window.set_aurora_refresh_button_text("Refresh".into());
+                    })
+                    .ok();
+                break;
             }
-        });
+
+            let minutes = remaining_seconds / 60;
+            let seconds = remaining_seconds % 60;
+            let countdown_text = format!("Refresh in {:02}:{:02}", minutes, seconds);
+            let w = window_weak.clone();
+            w.upgrade_in_event_loop(move |window| {
+                window.set_aurora_refresh_button_text(countdown_text.into());
+            })
+            .ok();
+        }
     });
 }

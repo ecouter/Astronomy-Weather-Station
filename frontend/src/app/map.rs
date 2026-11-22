@@ -13,7 +13,7 @@ pub async fn fetch_map_image(lat: f64, lon: f64) -> Result<Vec<u8>, Box<dyn std:
     // Check if map already exists
     if filepath.exists() {
         println!("Map file {} already exists, loading from disk", filename);
-        return Ok(std::fs::read(&filepath)?);
+        return normalized_map_bytes(&filepath);
     }
 
     println!("Map file {} does not exist, fetching from OpenStreetMap API", filename);
@@ -29,8 +29,19 @@ pub async fn fetch_map_image(lat: f64, lon: f64) -> Result<Vec<u8>, Box<dyn std:
 
     println!("Map saved to {:?}", filepath);
 
-    // Read the saved PNG file
-    Ok(std::fs::read(&filepath)?)
+    normalized_map_bytes(&filepath)
+}
+
+/// The OSM crop and the WMS overlays must have identical pixel dimensions so
+/// they line up exactly when stacked. The crop size varies with latitude, so
+/// normalize it to the WMS image size (1280x720).
+fn normalized_map_bytes(path: &std::path::Path) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let img = image::open(path)?;
+    if img.width() != 1280 || img.height() != 720 {
+        img.resize_exact(1280, 720, image::imageops::FilterType::Lanczos3)
+            .save(path)?;
+    }
+    Ok(std::fs::read(path)?)
 }
 
 pub fn set_map_image(main_window: &MainWindow, image_data: Vec<u8>) {

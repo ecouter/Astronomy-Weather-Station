@@ -14,9 +14,6 @@ export component AuroraPage inherits Rectangle {
     in property <image> ace_epam_image;
     in property <image> canadian_magnetic_image;
     in property <image> alerts_timeline_image;
-    in property <image> all_sky_image;
-    in property <string> all_sky_location_name;
-    in property <[image]> all_sky_images;
     in-out property <int> current_section: 0;
     in-out property <bool> show_zoomed_image: false;
     in-out property <image> zoomed_image;
@@ -40,10 +37,7 @@ export component AuroraPage inherits Rectangle {
     in property <bool> wsa_enlil_error: false;
     in property <image> nasa_viirs_image;
     in property <bool> nasa_viirs_error: false;
-    in property <[bool]> all_sky_errors: [];
     callback go_back();
-    callback all_sky_previous();
-    callback all_sky_next();
     callback refresh_aurora();
 
     VerticalLayout {
@@ -88,7 +82,6 @@ export component AuroraPage inherits Rectangle {
             height: 50px;
             items: [
                 { text: "Dashboard" },
-                { text: "All Sky Cam" },
                 { text: "Advanced Space Weather" },
                 { text: "Predictions" }
             ];
@@ -250,154 +243,8 @@ export component AuroraPage inherits Rectangle {
             }
         }
 
-        // Section 1: All Sky Cam (Show all 10 all-sky cameras)
+        // Section 1: Advanced Space Weather (ACE solar wind, DSCOVR solar wind, ACE EPAM, Canadian magnetic)
         if current_section == 1: VerticalLayout {
-            spacing: 15px;
-
-            Text {
-                text: "Aurora All-Sky Cameras - All Locations";
-                color: #ffffff;
-                font-size: 24px;
-                font-weight: 600;
-                horizontal-alignment: center;
-            }
-
-            // Grid layout for all 10 all-sky images (2 rows of 5)
-            VerticalLayout {
-                spacing: 10px;
-
-                // Row 1
-                HorizontalLayout {
-                    spacing: 10px;
-                    for i in 5: VerticalLayout {
-                        spacing: 5px;
-                        width: root.width * 0.1875;
-
-                        Text {
-                            text: [
-                                "Kjell Henriksen Observatory, Norway",
-                                "Hankasalmi, Finland",
-                                "Yellowknife, Canada",
-                                "Athabasca, Canada",
-                                "Glacier National Park, USA"
-                            ][i];
-                            color: #ffffff;
-                            font-size: 12px;
-                            font-weight: 500;
-                            horizontal-alignment: center;
-                        }
-
-                        TouchArea {
-                            width: root.width * 0.1875;
-                            height: 180px;
-                            Image {
-                                source: all_sky_images.length > i ? all_sky_images[i] : @image-url("");
-                                width: 100%;
-                                height: 100%;
-                                image-fit: contain;
-                            }
-                            clicked => {
-                                if all_sky_images.length > i && all_sky_errors.length > i && !all_sky_errors[i] {
-                                    zoomed_image = all_sky_images[i];
-                                    zoomed_title = "Aurora All-Sky: " + [
-                                        "Kjell Henriksen Observatory, Norway",
-                                        "Hankasalmi, Finland",
-                                        "Yellowknife, Canada",
-                                        "Athabasca, Canada",
-                                        "Glacier National Park, USA"
-                                    ][i];
-                                    show_zoomed_image = true;
-                                }
-                            }
-                        }
-
-                        // Error overlay
-                        if (all_sky_errors.length > i && all_sky_errors[i]): Rectangle {
-                            width: root.width * 0.1875;
-                            height: 180px;
-                            background: #000000;
-                            z: 10;
-
-                            Text {
-                                text: "IMAGE UNAVAILABLE";
-                                color: #ffffff;
-                                font-size: 16px;
-                                font-weight: 700;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                        }
-                    }
-                }
-
-                // Row 2
-                HorizontalLayout {
-                    spacing: 10px;
-                    for i in 5: VerticalLayout {
-                        spacing: 5px;
-                        width: root.width * 0.1875;
-
-                        Text {
-                            text: [
-                                "Hansville, USA",
-                                "Isle Royale National Park, USA",
-                                "Heiligenblut, Austria",
-                                "Calgary, Canada",
-                                "Hobart, Australia"
-                            ][i];
-                            color: #ffffff;
-                            font-size: 12px;
-                            font-weight: 500;
-                            horizontal-alignment: center;
-                        }
-
-                        TouchArea {
-                            width: root.width * 0.1875;
-                            height: 180px;
-                            Image {
-                                source: all_sky_images.length > (i + 5) ? all_sky_images[i + 5] : @image-url("");
-                                width: 100%;
-                                height: 100%;
-                                image-fit: contain;
-                            }
-                            clicked => {
-                                if all_sky_images.length > (i + 5) && all_sky_errors.length > (i + 5) && !all_sky_errors[i + 5] {
-                                    zoomed_image = all_sky_images[i + 5];
-                                    zoomed_title = "Aurora All-Sky: " + [
-                                        "Hansville, USA",
-                                        "Isle Royale National Park, USA",
-                                        "Heiligenblut, Austria",
-                                        "Calgary, Canada",
-                                        "Hobart, Australia"
-                                    ][i];
-                                    show_zoomed_image = true;
-                                }
-                            }
-                        }
-
-                        // Error overlay
-                        if (all_sky_errors.length > (i + 5) && all_sky_errors[i + 5]): Rectangle {
-                            width: root.width * 0.1875;
-                            height: 180px;
-                            background: #000000;
-                            z: 10;
-
-                            Text {
-                                text: "IMAGE UNAVAILABLE";
-                                color: #ffffff;
-                                font-size: 16px;
-                                font-weight: 700;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Section 2: Advanced Space Weather (ACE solar wind, DSCOVR solar wind, ACE EPAM, Canadian magnetic)
-        if current_section == 2: VerticalLayout {
             spacing: 20px;
 
             VerticalLayout {
@@ -690,8 +537,8 @@ export component AuroraPage inherits Rectangle {
             }
         }
 
-        // Section 3: Predictions (Tonight's Aurora Forecast, Tomorrow Night's Aurora Forecast)
-        if current_section == 3: VerticalLayout {
+        // Section 2: Predictions (Tonight's Aurora Forecast, Tomorrow Night's Aurora Forecast)
+        if current_section == 2: VerticalLayout {
             spacing: 20px;
 
             HorizontalLayout {
