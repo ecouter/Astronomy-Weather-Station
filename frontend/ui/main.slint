@@ -486,11 +486,24 @@ export component MainWindow inherits Window {
                             else { root.main_image_index -= 1; }
                         }
                     }
-                    for i in root.main_image_names.length : Button {
-                        text: root.main_image_names[i];
-                        checkable: true;
-                        checked: root.main_image_index == i;
-                        clicked => { root.main_image_index = i; }
+                    for i in root.main_image_names.length : Rectangle {
+                        horizontal-stretch: 1;
+                        min-width: 90px;
+                        height: 26px;
+                        background: root.main_image_index == i ? #1976d2 : #2a2a2a;
+                        border-radius: 4px;
+                        Text {
+                            text: root.main_image_names[i];
+                            color: #ffffff;
+                            font-size: 11px;
+                            width: 100%;
+                            height: 100%;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        TouchArea {
+                            clicked => { root.main_image_index = i; }
+                        }
                     }
                     IconButton {
                         icon: Icons.chevron_forward;
@@ -1199,9 +1212,51 @@ export component MainWindow inherits Window {
                         border-radius: 2px;
                         HorizontalLayout {
                                 Text { text: night_hours[row_idx]; color: #ffffff; font-size: 10px; horizontal-stretch: 1; min-width: 34px; horizontal-alignment: center; vertical-alignment: center; }
-                                Text { text: night_clouds_low[row_idx]; color: #ffffff; font-size: 10px; horizontal-stretch: 1; min-width: 34px; horizontal-alignment: center; vertical-alignment: center; }
-                                Text { text: night_clouds_mid[row_idx]; color: #ffffff; font-size: 10px; horizontal-stretch: 1; min-width: 34px; horizontal-alignment: center; vertical-alignment: center; }
-                                Text { text: night_clouds_high[row_idx]; color: #ffffff; font-size: 10px; horizontal-stretch: 1; min-width: 34px; horizontal-alignment: center; vertical-alignment: center; }
+                                Rectangle {
+                                    horizontal-stretch: 1;
+                                    min-width: 34px;
+                                    background: night_clouds_low[row_idx] <= 5 ? #c62828 : night_clouds_low[row_idx] <= 20 ? #f9a825 : #c62828;
+                                    border-radius: 2px;
+                                    Text {
+                                        text: night_clouds_low[row_idx];
+                                        color: #ffffff;
+                                        font-size: 10px;
+                                        width: 100%;
+                                        height: 100%;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                                Rectangle {
+                                    horizontal-stretch: 1;
+                                    min-width: 34px;
+                                    background: night_clouds_mid[row_idx] <= 5 ? #c62828 : night_clouds_mid[row_idx] <= 20 ? #f9a825 : #c62828;
+                                    border-radius: 2px;
+                                    Text {
+                                        text: night_clouds_mid[row_idx];
+                                        color: #ffffff;
+                                        font-size: 10px;
+                                        width: 100%;
+                                        height: 100%;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                                Rectangle {
+                                    horizontal-stretch: 1;
+                                    min-width: 34px;
+                                    background: night_clouds_high[row_idx] <= 5 ? #c62828 : night_clouds_high[row_idx] <= 20 ? #f9a825 : #c62828;
+                                    border-radius: 2px;
+                                    Text {
+                                        text: night_clouds_high[row_idx];
+                                        color: #ffffff;
+                                        font-size: 10px;
+                                        width: 100%;
+                                        height: 100%;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
                                 Text { text: Math.round(night_seeing[row_idx] * 100) / 100; color: #ffffff; font-size: 10px; horizontal-stretch: 1; min-width: 34px; horizontal-alignment: center; vertical-alignment: center; }
                                 Text { text: night_index1[row_idx]; color: #ffffff; font-size: 10px; horizontal-stretch: 1; min-width: 34px; horizontal-alignment: center; vertical-alignment: center; }
                                 Text { text: night_index2[row_idx]; color: #ffffff; font-size: 10px; horizontal-stretch: 1; min-width: 34px; horizontal-alignment: center; vertical-alignment: center; }
