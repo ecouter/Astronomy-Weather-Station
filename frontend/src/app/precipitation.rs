@@ -6,6 +6,7 @@ use slint::ComponentHandle;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use crate::app::refresh::RUNTIME;
 use crate::app::utils::decode_png_to_slint_image;
 use crate::app::coordinates;
 use crate::MainWindow;
@@ -201,9 +202,9 @@ pub fn setup_precipitation_callbacks(main_window: &MainWindow) {
                 match coordinates::load_coordinates(&win) {
                     Ok((lat, lon)) => {
                         info!("Precipitation refresh: coordinates loaded successfully: lat={}, lon={}", lat, lon);
-                        let rt = tokio::runtime::Runtime::new().unwrap();
-                        rt.block_on(async move {
-                            if let Err(e) = refresh_precipitation_data(lat, lon, &win).await {
+                        let weak = win.as_weak();
+                        RUNTIME.spawn(async move {
+                            if let Err(e) = refresh_precipitation_data(lat, lon, weak).await {
                                 error!("Precipitation manual refresh failed: {e}");
                             }
                         });
@@ -254,7 +255,7 @@ pub async fn fetch_initial_precipitation(lat: f64, lon: f64) -> Result<()> {
 pub async fn refresh_precipitation_data(
     lat: f64,
     lon: f64,
-    main_window: &MainWindow,
+    main_window: slint::Weak<MainWindow>,
 ) -> Result<()> {
     // Clear all caches for manual refresh
     {
@@ -273,15 +274,16 @@ pub async fn refresh_precipitation_data(
     let bbox = precipitation_bbox(lat, lon);
     let now = Utc::now();
 
-    // Radar every 30 minutes
-    {
-        let mut last = LAST_RADAR_FETCH.lock().unwrap();
-        if last
-            .map(|t| now.signed_duration_since(t) >= ChronoDuration::minutes(30))
+    // Radar every 30 minutes. The lock guard is dropped before the await.
+    let radar_stale = {
+        let last = LAST_RADAR_FETCH.lock().unwrap();
+        last.map(|t| now.signed_duration_since(t) >= ChronoDuration::minutes(30))
             .unwrap_or(true)
-        {
-            match fetch_radar_now(&api, &bbox).await {
-                Ok((rain_bytes, snow_bytes, radar_time)) => {
+    };
+    if radar_stale {
+        match fetch_radar_now(&api, &bbox).await {
+            Ok((rain_bytes, snow_bytes, radar_time)) => {
+                {
                     let mut imgs = PRECIP_IMAGES.lock().unwrap();
                     imgs.insert(
                         (PrecipitationModel::Radar, PrecipitationLayer::RadarRain, 0),
@@ -291,15 +293,18 @@ pub async fn refresh_precipitation_data(
                         (PrecipitationModel::Radar, PrecipitationLayer::RadarSnow, 0),
                         snow_bytes,
                     );
+                }
+                {
+                    let mut last = LAST_RADAR_FETCH.lock().unwrap();
                     *last = Some(radar_time);
-                    error!(
-                        "precipitation: radar refresh ok at {}",
-                        radar_time.to_rfc3339()
-                    );
                 }
-                Err(e) => {
-                    error!("precipitation: radar refresh FAILED: {}", e);
-                }
+                error!(
+                    "precipitation: radar refresh ok at {}",
+                    radar_time.to_rfc3339()
+                );
+            }
+            Err(e) => {
+                error!("precipitation: radar refresh FAILED: {}", e);
             }
         }
     }
@@ -317,13 +322,9 @@ pub async fn refresh_precipitation_data(
     }
 
     // Push updated current selection into UI
-    let w = main_window.as_weak();
-    slint::invoke_from_event_loop(move || {
-        if let Some(win) = w.upgrade() {
-            update_precipitation_display(&win);
-        }
-    })
-    .ok();
+    main_window
+        .upgrade_in_event_loop(|win| update_precipitation_display(&win))
+        .ok();
 
     error!("precipitation: manual refresh completed successfully");
     Ok(())

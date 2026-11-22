@@ -28,7 +28,11 @@ pub static NINA_IMAGE_UPDATE_SENDER: Lazy<Mutex<Option<std::sync::mpsc::Sender<(
 });
 
 /// Fetch and update a single NINA image for the given slot
-pub async fn update_single_nina_image(main_window: &MainWindow, slot_index: usize, base_url: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn update_single_nina_image(
+    main_window: slint::Weak<MainWindow>,
+    slot_index: usize,
+    base_url: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     use nina::{fetch_prepared_image, PreparedImageParams};
 
     info!("Starting image update for NINA slot {} from URL: {}", slot_index + 1, base_url);
@@ -51,52 +55,39 @@ pub async fn update_single_nina_image(main_window: &MainWindow, slot_index: usiz
     match fetch_prepared_image(base_url, &image_params).await {
         Ok(image_data) => {
             info!("Successfully fetched {} bytes of image data for slot {}", image_data.len(), slot_index + 1);
-            match decode_png_to_slint_image(&image_data) {
-                Ok(slint_image) => {
-                    debug!("Successfully decoded PNG to Slint image for slot {}", slot_index + 1);
-                    // Clear any existing error state since image fetch succeeded
-                    clear_nina_error_state(main_window, slot_index);
-                    match slot_index {
-                        0 => {
-                            main_window.set_nina_image1(slint_image);
-                            info!("Updated NINA image for slot 1");
+            main_window
+                .upgrade_in_event_loop(move |win| {
+                    match decode_png_to_slint_image(&image_data) {
+                        Ok(slint_image) => {
+                            debug!("Successfully decoded PNG to Slint image for slot {}", slot_index + 1);
+                            clear_nina_error_state(&win, slot_index);
+                            match slot_index {
+                                0 => win.set_nina_image1(slint_image),
+                                1 => win.set_nina_image2(slint_image),
+                                2 => win.set_nina_image3(slint_image),
+                                3 => win.set_nina_image4(slint_image),
+                                4 => win.set_nina_image5(slint_image),
+                                5 => win.set_nina_image6(slint_image),
+                                _ => warn!("Invalid slot index {} for NINA image update", slot_index),
+                            }
+                            info!("Updated NINA image for slot {}", slot_index + 1);
                         }
-                        1 => {
-                            main_window.set_nina_image2(slint_image);
-                            info!("Updated NINA image for slot 2");
-                        }
-                        2 => {
-                            main_window.set_nina_image3(slint_image);
-                            info!("Updated NINA image for slot 3");
-                        }
-                        3 => {
-                            main_window.set_nina_image4(slint_image);
-                            info!("Updated NINA image for slot 4");
-                        }
-                        4 => {
-                            main_window.set_nina_image5(slint_image);
-                            info!("Updated NINA image for slot 5");
-                        }
-                        5 => {
-                            main_window.set_nina_image6(slint_image);
-                            info!("Updated NINA image for slot 6");
-                        }
-                        _ => {
-                            warn!("Invalid slot index {} for NINA image update", slot_index);
+                        Err(e) => {
+                            error!("Failed to decode NINA image for slot {}: {}", slot_index + 1, e);
+                            set_nina_error_state(&win, slot_index, "Failed to decode image data");
                         }
                     }
-                    Ok(())
-                }
-                Err(e) => {
-                    error!("Failed to decode NINA image for slot {}: {}", slot_index + 1, e);
-                    set_nina_error_state(main_window, slot_index, "Failed to decode image data");
-                    Err(Box::new(NinaError(format!("Failed to decode image data: {}", e))))
-                }
-            }
+                })
+                .ok();
+            Ok(())
         }
         Err(e) => {
             error!("Failed to fetch NINA image from {} for slot {}: {}", base_url, slot_index + 1, e);
-            set_nina_error_state(main_window, slot_index, "Failed to fetch image");
+            main_window
+                .upgrade_in_event_loop(move |win| {
+                    set_nina_error_state(&win, slot_index, "Failed to fetch image");
+                })
+                .ok();
             Err(Box::new(NinaError(format!("Failed to fetch image: {}", e))))
         }
     }
@@ -338,7 +329,7 @@ pub fn stop_nina_guiding_thread(slot_index: usize) {
 }
 
 /// Handle URL change for a NINA slot
-pub async fn handle_nina_url_change(slot_index: usize, new_url: String, main_window: &MainWindow) -> Result<(), Box<dyn std::error::Error>> {
+pub fn handle_nina_url_change(slot_index: usize, new_url: String, main_window: &MainWindow) -> Result<(), Box<dyn std::error::Error>> {
     info!("Handling URL change for NINA slot {}: '{}'", slot_index + 1, new_url);
 
     if new_url.trim().is_empty() {
