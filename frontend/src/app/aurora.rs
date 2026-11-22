@@ -3,10 +3,10 @@ use std::error::Error;
 use once_cell::sync::Lazy;
 use slint::ComponentHandle;
 use crate::MainWindow;
+use crate::app::refresh::spawn;
 use crate::app::utils::{decode_png_to_slint_image, resize_png_if_needed};
 use crate::app::coordinates::load_coordinates;
 use chrono::{Duration, Timelike, Utc};
-use tokio::time::Duration as TokioDuration;
 
 pub static ALL_SKY_IMAGES: Lazy<Mutex<Vec<Vec<u8>>>> = Lazy::new(|| Mutex::new(Vec::new()));
 pub static ALL_SKY_INDEX: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::new(0));
@@ -51,14 +51,11 @@ pub fn setup_aurora_callbacks(main_window: &MainWindow) {
                 // Clone weak for async use in background thread
                 let weak_clone = window.as_weak();
 
-                // Spawn background thread for async refresh to avoid freezing UI
-                std::thread::spawn(move || {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
-                    rt.block_on(async move {
-                        if let Err(e) = update_aurora_images(weak_clone, lat, lon).await {
-                            error!("Aurora refresh failed: {}", e);
-                        }
-                    });
+                // Fetch on the shared runtime; the UI is never blocked.
+                spawn(async move {
+                    if let Err(e) = update_aurora_images(weak_clone, lat, lon).await {
+                        error!("Aurora refresh failed: {}", e);
+                    }
                 });
             }
         }).unwrap();
@@ -503,39 +500,31 @@ pub fn update_all_sky_display(main_window: &MainWindow) {
 fn start_refresh_countdown(main_window: &MainWindow) {
     let window_weak = main_window.as_weak();
 
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async move {
-            let mut interval = tokio::time::interval(TokioDuration::from_secs(1));
-            let mut remaining_seconds = 300; // 5 minutes
+    spawn(async move {
+        let mut remaining_seconds = 300; // 5 minutes
 
-            loop {
-                interval.tick().await;
-                remaining_seconds -= 1;
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            remaining_seconds -= 1;
 
-                if remaining_seconds <= 0 {
-                    // Countdown finished, re-enable button
-                    slint::invoke_from_event_loop(move || {
-                        if let Some(window) = window_weak.upgrade() {
-                            window.set_aurora_refresh_button_enabled(true);
-                            window.set_aurora_refresh_button_text("Refresh".into());
-                        }
-                    }).ok();
-                    break;
-                }
-
-                // Update button text with countdown
-                let minutes = remaining_seconds / 60;
-                let seconds = remaining_seconds % 60;
-                let countdown_text = format!("Refresh in {:02}:{:02}", minutes, seconds);
-
-                let window_weak_clone = window_weak.clone();
-                slint::invoke_from_event_loop(move || {
-                    if let Some(window) = window_weak_clone.upgrade() {
-                        window.set_aurora_refresh_button_text(countdown_text.into());
-                    }
-                }).ok();
+            if remaining_seconds <= 0 {
+                window_weak
+                    .upgrade_in_event_loop(|window| {
+                        window.set_aurora_refresh_button_enabled(true);
+                        window.set_aurora_refresh_button_text("Refresh".into());
+                    })
+                    .ok();
+                break;
             }
-        });
+
+            let minutes = remaining_seconds / 60;
+            let seconds = remaining_seconds % 60;
+            let countdown_text = format!("Refresh in {:02}:{:02}", minutes, seconds);
+            let w = window_weak.clone();
+            w.upgrade_in_event_loop(move |window| {
+                window.set_aurora_refresh_button_text(countdown_text.into());
+            })
+            .ok();
+        }
     });
 }

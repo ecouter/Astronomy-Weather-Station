@@ -3,6 +3,7 @@ use once_cell::sync::Lazy;
 use std::sync::Arc;
 use slint::ComponentHandle;
 use crate::MainWindow;
+use crate::app::refresh::RUNTIME;
 use crate::app::utils::decode_png_to_slint_image;
 
 // Store websocket stop senders for each NINA slot (0-5)
@@ -10,21 +11,13 @@ pub static NINA_WEBSOCKET_SENDERS: Lazy<Mutex<Vec<Option<Arc<Mutex<Option<std::s
     Mutex::new(vec![None; 6])
 });
 
-// Store guiding graph thread handles and stop senders for each NINA slot (0-5)
-pub static NINA_GUIDING_THREADS: Lazy<Mutex<Vec<Option<(std::thread::JoinHandle<()>, std::sync::mpsc::Sender<()>)>>>> = Lazy::new(|| {
+// Store guiding graph task handles for each NINA slot (0-5)
+pub static NINA_GUIDING_THREADS: Lazy<Mutex<Vec<Option<tokio::task::JoinHandle<()>>>>> = Lazy::new(|| {
     let mut vec = Vec::with_capacity(6);
     for _ in 0..6 {
         vec.push(None);
     }
     Mutex::new(vec)
-});
-
-// Channel for websocket image update signals
-pub static NINA_IMAGE_UPDATE_CHANNEL: Lazy<Mutex<Option<std::sync::mpsc::Receiver<(usize, String)>>>> = Lazy::new(|| {
-    Mutex::new(None)
-});
-pub static NINA_IMAGE_UPDATE_SENDER: Lazy<Mutex<Option<std::sync::mpsc::Sender<(usize, String)>>>> = Lazy::new(|| {
-    Mutex::new(None)
 });
 
 /// Fetch and update a single NINA image for the given slot
@@ -94,12 +87,15 @@ pub async fn update_single_nina_image(
 }
 
 /// Fetch and update a single NINA guiding graph for the given slot
-async fn update_single_nina_guiding_graph(main_window: &MainWindow, slot_index: usize, base_url: &str) -> Result<(), Box<dyn std::error::Error>> {
+async fn update_single_nina_guiding_graph(
+    main_window: slint::Weak<MainWindow>,
+    slot_index: usize,
+    base_url: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     use nina::{fetch_guiding_graph, generate_guiding_graph_png, fetch_guider_info};
 
     info!("Starting guiding graph update for NINA slot {} from URL: {}", slot_index + 1, base_url);
 
-    // Fetch guider info first
     let guider_state = match fetch_guider_info(base_url).await {
         Ok(guider_info) => {
             info!("Successfully fetched guider info for slot {}: state='{}'", slot_index + 1, guider_info.state);
@@ -111,17 +107,20 @@ async fn update_single_nina_guiding_graph(main_window: &MainWindow, slot_index: 
         }
     };
 
-    // Update guider state property
     if let Some(state) = guider_state {
-        match slot_index {
-            0 => main_window.set_nina_guider_state1(state.into()),
-            1 => main_window.set_nina_guider_state2(state.into()),
-            2 => main_window.set_nina_guider_state3(state.into()),
-            3 => main_window.set_nina_guider_state4(state.into()),
-            4 => main_window.set_nina_guider_state5(state.into()),
-            5 => main_window.set_nina_guider_state6(state.into()),
-            _ => warn!("Invalid slot index {} for guider state update", slot_index),
-        }
+        let w = main_window.clone();
+        w.upgrade_in_event_loop(move |win| {
+            match slot_index {
+                0 => win.set_nina_guider_state1(state.into()),
+                1 => win.set_nina_guider_state2(state.into()),
+                2 => win.set_nina_guider_state3(state.into()),
+                3 => win.set_nina_guider_state4(state.into()),
+                4 => win.set_nina_guider_state5(state.into()),
+                5 => win.set_nina_guider_state6(state.into()),
+                _ => warn!("Invalid slot index {} for guider state update", slot_index),
+            }
+        })
+        .ok();
     }
 
     match fetch_guiding_graph(base_url).await {
@@ -130,45 +129,29 @@ async fn update_single_nina_guiding_graph(main_window: &MainWindow, slot_index: 
             match generate_guiding_graph_png(&graph_data, slot_index) {
                 Ok(png_data) => {
                     info!("Successfully generated {} bytes of guiding graph PNG for slot {}", png_data.len(), slot_index + 1);
-                    match decode_png_to_slint_image(&png_data) {
-                        Ok(slint_image) => {
-                            debug!("Successfully decoded guiding graph PNG to Slint image for slot {}", slot_index + 1);
-                            match slot_index {
-                                0 => {
-                                    main_window.set_nina_guiding_image1(slint_image);
-                                    info!("Updated NINA guiding graph for slot 1");
+                    let w = main_window.clone();
+                    w.upgrade_in_event_loop(move |win| {
+                        match decode_png_to_slint_image(&png_data) {
+                            Ok(slint_image) => {
+                                debug!("Successfully decoded guiding graph PNG to Slint image for slot {}", slot_index + 1);
+                                match slot_index {
+                                    0 => win.set_nina_guiding_image1(slint_image),
+                                    1 => win.set_nina_guiding_image2(slint_image),
+                                    2 => win.set_nina_guiding_image3(slint_image),
+                                    3 => win.set_nina_guiding_image4(slint_image),
+                                    4 => win.set_nina_guiding_image5(slint_image),
+                                    5 => win.set_nina_guiding_image6(slint_image),
+                                    _ => warn!("Invalid slot index {} for NINA guiding graph update", slot_index),
                                 }
-                                1 => {
-                                    main_window.set_nina_guiding_image2(slint_image);
-                                    info!("Updated NINA guiding graph for slot 2");
-                                }
-                                2 => {
-                                    main_window.set_nina_guiding_image3(slint_image);
-                                    info!("Updated NINA guiding graph for slot 3");
-                                }
-                                3 => {
-                                    main_window.set_nina_guiding_image4(slint_image);
-                                    info!("Updated NINA guiding graph for slot 4");
-                                }
-                                4 => {
-                                    main_window.set_nina_guiding_image5(slint_image);
-                                    info!("Updated NINA guiding graph for slot 5");
-                                }
-                                5 => {
-                                    main_window.set_nina_guiding_image6(slint_image);
-                                    info!("Updated NINA guiding graph for slot 6");
-                                }
-                                _ => {
-                                    warn!("Invalid slot index {} for NINA guiding graph update", slot_index);
-                                }
+                                info!("Updated NINA guiding graph for slot {}", slot_index + 1);
                             }
-                            Ok(())
+                            Err(e) => {
+                                error!("Failed to decode NINA guiding graph for slot {}: {}", slot_index + 1, e);
+                            }
                         }
-                        Err(e) => {
-                            error!("Failed to decode NINA guiding graph for slot {}: {}", slot_index + 1, e);
-                            Err(Box::new(NinaError(format!("Failed to decode guiding graph: {}", e))))
-                        }
-                    }
+                    })
+                    .ok();
+                    Ok(())
                 }
                 Err(e) => {
                     error!("Failed to generate guiding graph PNG for slot {}: {}", slot_index + 1, e);
@@ -207,20 +190,20 @@ pub fn start_nina_websocket(slot_index: usize, base_url: String, main_window: &M
     let main_window_weak = main_window.as_weak();
     let base_url_clone = base_url.clone();
 
-    // Create the callback that will be called when an image-prepared event is received
+    // Create the callback that will be called when an image-prepared event is received.
+    // The websocket listener runs on its own thread; hand the actual work to the
+    // shared runtime and keep all UI updates on the Slint event loop.
     let on_image_prepared = move |event: nina::ImagePreparedEvent| {
         info!("Received image prepared event for slot {}: event={}",
               slot_index + 1,
               event.event);
-
-        // Send signal to the image update channel
-        if let Some(sender) = NINA_IMAGE_UPDATE_SENDER.lock().unwrap().as_ref() {
-            if let Err(e) = sender.send((slot_index, base_url_clone.clone())) {
-                warn!("Failed to send image update signal for slot {}: {}", slot_index + 1, e);
+        let w = main_window_weak.clone();
+        let url = base_url_clone.clone();
+        RUNTIME.spawn(async move {
+            if let Err(e) = update_single_nina_image(w, slot_index, &url).await {
+                error!("Failed to update NINA image for slot {}: {}", slot_index + 1, e);
             }
-        } else {
-            warn!("No image update sender available for slot {}", slot_index + 1);
-        }
+        });
     };
 
     // Spawn the websocket listener
@@ -256,75 +239,40 @@ pub fn stop_nina_websocket(slot_index: usize) {
     }
 }
 
-/// Start guiding graph polling thread for a NINA slot
+/// Start guiding graph polling task for a NINA slot
 pub fn start_nina_guiding_thread(slot_index: usize, base_url: String, main_window: &MainWindow) {
-    info!("Starting guiding graph polling thread for NINA slot {} with URL: {}", slot_index + 1, base_url);
+    info!("Starting guiding graph polling task for NINA slot {} with URL: {}", slot_index + 1, base_url);
 
-    // Stop existing guiding thread for this slot if any
     stop_nina_guiding_thread(slot_index);
 
     let main_window_weak = main_window.as_weak();
     let base_url_clone = base_url.clone();
-    let (stop_tx, stop_rx) = std::sync::mpsc::channel();
 
-    let handle = std::thread::spawn(move || {
-        info!("Guiding graph polling thread started for slot {}", slot_index + 1);
-        let rt = tokio::runtime::Runtime::new().unwrap();
-
+    let handle = RUNTIME.spawn(async move {
         loop {
-            // Check if stop signal received
-            if stop_rx.try_recv().is_ok() {
-                info!("Stop signal received, stopping guiding graph polling thread for slot {}", slot_index + 1);
-                break;
+            let w = main_window_weak.clone();
+            let url = base_url_clone.clone();
+            if let Err(e) = update_single_nina_guiding_graph(w, slot_index, &url).await {
+                error!("Failed to update NINA guiding graph for slot {}: {}", slot_index + 1, e);
             }
-
-            // Update guiding graph
-            let main_window_weak = main_window_weak.clone();
-            let base_url = base_url_clone.clone();
-
-            match slint::invoke_from_event_loop(move || {
-                debug!("Invoking guiding graph update for NINA slot {} in event loop", slot_index + 1);
-                let rt = tokio::runtime::Runtime::new().unwrap();
-                let window = main_window_weak.upgrade();
-                if let Some(window) = window {
-                    rt.block_on(async {
-                        if let Err(e) = update_single_nina_guiding_graph(&window, slot_index, &base_url).await {
-                            error!("Failed to update NINA guiding graph for slot {}: {}", slot_index + 1, e);
-                        }
-                    });
-                } else {
-                    warn!("Failed to upgrade main window weak reference for guiding graph slot {}", slot_index + 1);
-                }
-            }) {
-                Ok(_) => debug!("Successfully invoked guiding graph update for slot {}", slot_index + 1),
-                Err(e) => error!("Failed to invoke guiding graph update for slot {}: {}", slot_index + 1, e),
-            }
-
-            // Wait 10 seconds before next update
-            std::thread::sleep(std::time::Duration::from_secs(10));
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
         }
-
-        info!("Guiding graph polling thread ended for slot {}", slot_index + 1);
     });
 
-    // Store the handle and sender
     {
         let mut threads = NINA_GUIDING_THREADS.lock().unwrap();
-        threads[slot_index] = Some((handle, stop_tx));
-        info!("Stored guiding graph thread for NINA slot {}", slot_index + 1);
+        threads[slot_index] = Some(handle);
     }
 
-    info!("Started guiding graph polling thread for NINA slot {}", slot_index + 1);
+    info!("Started guiding graph task for NINA slot {}", slot_index + 1);
 }
 
-/// Stop guiding graph polling thread for a NINA slot
+/// Stop guiding graph polling task for a NINA slot
 pub fn stop_nina_guiding_thread(slot_index: usize) {
-    info!("Stopping guiding graph polling thread for NINA slot {}", slot_index + 1);
+    info!("Stopping guiding graph task for NINA slot {}", slot_index + 1);
     let mut threads = NINA_GUIDING_THREADS.lock().unwrap();
-    if let Some((handle, sender)) = threads[slot_index].take() {
-        let _ = sender.send(());
-        // Don't wait for the thread to finish, just let it end naturally
-        info!("Sent stop signal to guiding graph polling thread for NINA slot {}", slot_index + 1);
+    if let Some(handle) = threads[slot_index].take() {
+        handle.abort();
     }
 }
 

@@ -4,6 +4,7 @@ use once_cell::sync::Lazy;
 use chrono::Timelike;
 use slint::ComponentHandle;
 use crate::MainWindow;
+use crate::app::refresh::spawn;
 use crate::app::utils::{decode_png_to_slint_image, decode_png_to_slint_image_with_black_transparency};
 
 pub static CLOUD_COVER_IMAGES: Lazy<Mutex<HashMap<u32, Vec<u8>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
@@ -104,10 +105,8 @@ fn lazy_fetch_cloud_cover_image(window_weak: slint::Weak<MainWindow>, hour: u32)
     };
 
     if let Some((lat, lon)) = coordinates_opt {
-        let window_weak_for_thread = window_weak.clone();
-        std::thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async move {
+        let weak = window_weak.clone();
+        spawn(async move {
                 if let Ok(image_data) = fetch_single_cloud_cover_image(lat, lon, hour).await {
                     debug!("Successfully lazy fetched image for hour {}", hour);
                     // Store the image in the cache
@@ -117,31 +116,28 @@ fn lazy_fetch_cloud_cover_image(window_weak: slint::Weak<MainWindow>, hour: u32)
                     }
 
                     // Update display if we're still on the same hour
-                    slint::invoke_from_event_loop(move || {
-                        if let Some(window) = window_weak_for_thread.upgrade() {
-                            if let Ok(current_hour) = CLOUD_COVER_CURRENT_HOUR.try_lock() {
-                                if *current_hour == hour {
-                                    debug!("Still on hour {}, updating display with lazy fetched image", hour);
-                                    match decode_png_to_slint_image_with_black_transparency(&image_data) {
-                                        Ok(slint_image) => {
-                                            window.set_cloud_cover_image(slint_image);
-                                            window.set_cloud_cover_counter(format!("+{}h", hour).into());
-                                        }
-                                        Err(e) => {
-                                            error!("Failed to decode lazy fetched cloud cover image: {}", e);
-                                            window.set_cloud_cover_counter("Image unavailable".into());
-                                        }
+                    weak.upgrade_in_event_loop(move |window| {
+                        if let Ok(current_hour) = CLOUD_COVER_CURRENT_HOUR.try_lock() {
+                            if *current_hour == hour {
+                                debug!("Still on hour {}, updating display with lazy fetched image", hour);
+                                match decode_png_to_slint_image_with_black_transparency(&image_data) {
+                                    Ok(slint_image) => {
+                                        window.set_cloud_cover_image(slint_image);
+                                        window.set_cloud_cover_counter(format!("+{}h", hour).into());
                                     }
-                                } else {
-                                    debug!("Hour changed from {} to {}, not updating display", hour, *current_hour);
+                                    Err(e) => {
+                                        error!("Failed to decode lazy fetched cloud cover image: {}", e);
+                                        window.set_cloud_cover_counter("Image unavailable".into());
+                                    }
                                 }
+                            } else {
+                                debug!("Hour changed, not updating display");
                             }
                         }
                     }).ok();
                 } else {
                     error!("Failed to lazy fetch cloud cover image for hour {}", hour);
                 }
-            });
         });
     } else {
         error!("Could not load coordinates for lazy cloud cover fetch");

@@ -68,34 +68,6 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
 
-    // NINA image update signals: a single long-lived listener. It only waits on
-    // the channel; each image refresh runs on the shared runtime.
-    {
-        let (sender, receiver) = std::sync::mpsc::channel();
-        *app::nina::NINA_IMAGE_UPDATE_SENDER.lock().unwrap() = Some(sender);
-        *app::nina::NINA_IMAGE_UPDATE_CHANNEL.lock().unwrap() = Some(receiver);
-
-        let weak = main_window.as_weak();
-        std::thread::spawn(move || {
-            info!("NINA image update handler thread started");
-            while let Some(receiver) = app::nina::NINA_IMAGE_UPDATE_CHANNEL.lock().unwrap().as_ref() {
-                match receiver.recv() {
-                    Ok((slot_index, base_url)) => {
-                        info!("Processing NINA image update for slot {} from {}", slot_index + 1, base_url);
-                        let w = weak.clone();
-                        spawn(async move {
-                            if let Err(e) = app::nina::update_single_nina_image(w, slot_index, &base_url).await {
-                                error!("Failed to update NINA image for slot {}: {}", slot_index + 1, e);
-                            }
-                        });
-                    }
-                    Err(_) => break, // channel closed
-                }
-            }
-            info!("NINA image update handler thread ended");
-        });
-    }
-
     main_window.set_loading(false); // show the UI immediately; data loads in the background
 
     let weak = main_window.as_weak();
