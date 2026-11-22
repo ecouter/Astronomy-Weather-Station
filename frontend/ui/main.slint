@@ -153,6 +153,13 @@ export component MainWindow inherits Window {
     in property <bool> aurora_nasa_viirs_error: false;
     in property <[bool]> aurora_all_sky_errors: [];
 
+    // Status bar data - timestamps updated by Rust as each feed arrives
+    in property <string> last_weather_update: "";
+    in property <string> last_cloud_cover_update: "";
+    in property <string> last_wind_update: "";
+    in property <string> last_env_canada_update: "";
+    in-out property <bool> auto_cycle_enabled: true;
+
     // Precipitation page bindings
     in property <image> precipitation_base_map_image;
     in property <image> precipitation_active_precip_image;
@@ -250,7 +257,27 @@ export component MainWindow inherits Window {
     callback aurora_all_sky_next();
     callback aurora_refresh();
 
+    // Auto-cycle timers. Different intervals keep the panels from changing in lockstep.
+    property <bool> auto-cycle-active: root.auto_cycle_enabled && !root.show_env_canada && !root.show_nina && !root.show_sounding && !root.show_precipitation && !root.show_aurora && !root.show_zoomed_image;
+
+    cycle-cloud-timer := Timer {
+        interval: 8s;
+        running: root.auto-cycle-active;
+        triggered => { root.cloud_cover_next(); }
+    }
+    cycle-wind-timer := Timer {
+        interval: 11s;
+        running: root.auto-cycle-active;
+        triggered => { root.wind_next(); }
+    }
+    cycle-env-timer := Timer {
+        interval: 9s;
+        running: root.auto_cycle_enabled && root.show_env_canada && !root.show_zoomed_image;
+        triggered => { root.env_canada_clouds_next(); }
+    }
+
     if (!show_env_canada): HorizontalLayout {
+        height: root.height - 28px;
         alignment: start;
         // Left side: Cloud cover prediction (top portion, ~33% width)
         VerticalBox {
@@ -408,13 +435,13 @@ export component MainWindow inherits Window {
                             color: #ffffff;
                             font-size: 10px;
                             horizontal-alignment: center;
-                            width: 25px;
+                            horizontal-stretch: 1;
                         }
                     }
                     HorizontalLayout {
                         Rectangle { width: 60px; } // Spacer for label
                         for i in day0_conditions.length : Rectangle {
-                            width: 25px;
+                            horizontal-stretch: 1;
                             height: 12px;
                             background: day0_conditions[i] == "bad" ? #ff0000 : day0_conditions[i] == "ok" ? #ffff00 : #00ff00;
                             border-radius: 2px;
@@ -443,13 +470,13 @@ export component MainWindow inherits Window {
                             color: #ffffff;
                             font-size: 10px;
                             horizontal-alignment: center;
-                            width: 25px;
+                            horizontal-stretch: 1;
                         }
                     }
                     HorizontalLayout {
                         Rectangle { width: 60px; } // Spacer for label
                         for i in day1_conditions.length : Rectangle {
-                            width: 25px;
+                            horizontal-stretch: 1;
                             height: 12px;
                             background: day1_conditions[i] == "bad" ? #ff0000 : day1_conditions[i] == "ok" ? #ffff00 : #00ff00;
                             border-radius: 2px;
@@ -478,13 +505,13 @@ export component MainWindow inherits Window {
                             color: #ffffff;
                             font-size: 10px;
                             horizontal-alignment: center;
-                            width: 25px;
+                            horizontal-stretch: 1;
                         }
                     }
                     HorizontalLayout {
                         Rectangle { width: 60px; } // Spacer for label
                         for i in day2_conditions.length : Rectangle {
-                            width: 25px;
+                            horizontal-stretch: 1;
                             height: 12px;
                             background: day2_conditions[i] == "bad" ? #ff0000 : day2_conditions[i] == "ok" ? #ffff00 : #00ff00;
                             border-radius: 2px;
@@ -513,13 +540,13 @@ export component MainWindow inherits Window {
                             color: #ffffff;
                             font-size: 10px;
                             horizontal-alignment: center;
-                            width: 25px;
+                            horizontal-stretch: 1;
                         }
                     }
                     HorizontalLayout {
                         Rectangle { width: 60px; } // Spacer for label
                         for i in day3_conditions.length : Rectangle {
-                            width: 25px;
+                            horizontal-stretch: 1;
                             height: 12px;
                             background: day3_conditions[i] == "bad" ? #ff0000 : day3_conditions[i] == "ok" ? #ffff00 : #00ff00;
                             border-radius: 2px;
@@ -554,7 +581,7 @@ export component MainWindow inherits Window {
                     HorizontalLayout {
                         Rectangle { width: 60px; } // Spacer for label
                         for i in day4_conditions.length : Rectangle {
-                            width: 25px;
+                            horizontal-stretch: 1;
                             height: 12px;
                             background: day4_conditions[i] == "bad" ? #ff0000 : day4_conditions[i] == "ok" ? #ffff00 : #00ff00;
                             border-radius: 2px;
@@ -589,7 +616,7 @@ export component MainWindow inherits Window {
                     HorizontalLayout {
                         Rectangle { width: 60px; } // Spacer for label
                         for i in day5_conditions.length : Rectangle {
-                            width: 25px;
+                            horizontal-stretch: 1;
                             height: 12px;
                             background: day5_conditions[i] == "bad" ? #ff0000 : day5_conditions[i] == "ok" ? #ffff00 : #00ff00;
                             border-radius: 2px;
@@ -624,7 +651,7 @@ export component MainWindow inherits Window {
                     HorizontalLayout {
                         Rectangle { width: 60px; } // Spacer for label
                         for i in day6_conditions.length : Rectangle {
-                            width: 25px;
+                            horizontal-stretch: 1; min-width: 26px;
                             height: 12px;
                             background: day6_conditions[i] == "bad" ? #ff0000 : day6_conditions[i] == "ok" ? #ffff00 : #00ff00;
                             border-radius: 2px;
@@ -659,19 +686,19 @@ export component MainWindow inherits Window {
 
                     // Column headers
                     HorizontalLayout {
-                        Text { text: "Hour"; color: #ffffff; font-size: 8px; font-weight: 600; width: 25px; horizontal-alignment: center; }
-                        Text { text: "LClouds"; color: #ffffff; font-size: 8px; font-weight: 600; width: 35px; horizontal-alignment: center; }
-                        Text { text: "MClouds"; color: #ffffff; font-size: 8px; font-weight: 600; width: 35px; horizontal-alignment: center; }
-                        Text { text: "HClouds"; color: #ffffff; font-size: 8px; font-weight: 600; width: 35px; horizontal-alignment: center; }
-                        Text { text: "Seeing"; color: #ffffff; font-size: 8px; font-weight: 600; width: 30px; horizontal-alignment: center; }
-                        Text { text: "Ind.1"; color: #ffffff; font-size: 8px; font-weight: 600; width: 25px; horizontal-alignment: center; }
-                        Text { text: "Ind.2"; color: #ffffff; font-size: 8px; font-weight: 600; width: 25px; horizontal-alignment: center; }
-                        Text { text: "Jetstrm"; color: #ffffff; font-size: 8px; font-weight: 600; width: 35px; horizontal-alignment: center; }
-                        Text { text: "BdLyrBot"; color: #ffffff; font-size: 8px; font-weight: 600; width: 40px; horizontal-alignment: center; }
-                        Text { text: "BdLyrTop"; color: #ffffff; font-size: 8px; font-weight: 600; width: 40px; horizontal-alignment: center; }
-                        Text { text: "Grdt"; color: #ffffff; font-size: 8px; font-weight: 600; width: 25px; horizontal-alignment: center; }
-                        Text { text: "Temp"; color: #ffffff; font-size: 8px; font-weight: 600; width: 30px; horizontal-alignment: center; }
-                        Text { text: "Hmdty"; color: #ffffff; font-size: 8px; font-weight: 600; width: 35px; horizontal-alignment: center; }
+                        Text { text: "Hour"; color: #ffffff; font-size: 8px; font-weight: 600; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                        Text { text: "LClouds"; color: #ffffff; font-size: 8px; font-weight: 600; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                        Text { text: "MClouds"; color: #ffffff; font-size: 8px; font-weight: 600; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                        Text { text: "HClouds"; color: #ffffff; font-size: 8px; font-weight: 600; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                        Text { text: "Seeing"; color: #ffffff; font-size: 8px; font-weight: 600; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                        Text { text: "Ind.1"; color: #ffffff; font-size: 8px; font-weight: 600; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                        Text { text: "Ind.2"; color: #ffffff; font-size: 8px; font-weight: 600; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                        Text { text: "Jetstrm"; color: #ffffff; font-size: 8px; font-weight: 600; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                        Text { text: "BdLyrBot"; color: #ffffff; font-size: 8px; font-weight: 600; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                        Text { text: "BdLyrTop"; color: #ffffff; font-size: 8px; font-weight: 600; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                        Text { text: "Grdt"; color: #ffffff; font-size: 8px; font-weight: 600; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                        Text { text: "Temp"; color: #ffffff; font-size: 8px; font-weight: 600; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                        Text { text: "Hmdty"; color: #ffffff; font-size: 8px; font-weight: 600; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
                     }
 
                     // Data rows
@@ -680,18 +707,18 @@ export component MainWindow inherits Window {
                         border-radius: 2px;
 
                         HorizontalLayout {
-                            Text { text: night_hours[row_idx]; color: #ffffff; font-size: 8px; width: 25px; horizontal-alignment: center; }
-                            Text { text: night_clouds_low[row_idx]; color: #ffffff; font-size: 8px; width: 35px; horizontal-alignment: center; }
-                            Text { text: night_clouds_mid[row_idx]; color: #ffffff; font-size: 8px; width: 35px; horizontal-alignment: center; }
-                            Text { text: night_clouds_high[row_idx]; color: #ffffff; font-size: 8px; width: 35px; horizontal-alignment: center; }
-                            Text { text: Math.round(night_seeing[row_idx] * 100) / 100; color: #ffffff; font-size: 8px; width: 30px; horizontal-alignment: center; }
-                            Text { text: night_index1[row_idx]; color: #ffffff; font-size: 8px; width: 25px; horizontal-alignment: center; }
-                            Text { text: night_index2[row_idx]; color: #ffffff; font-size: 8px; width: 25px; horizontal-alignment: center; }
-                            Text { text: Math.round(night_jetstream[row_idx] * 10) / 10; color: #ffffff; font-size: 8px; width: 35px; horizontal-alignment: center; }
-                            Text { text: Math.round(night_bad_layers_bot[row_idx] * 100) / 100; color: #ffffff; font-size: 8px; width: 40px; horizontal-alignment: center; }
-                            Text { text: Math.round(night_bad_layers_top[row_idx] * 100) / 100; color: #ffffff; font-size: 8px; width: 40px; horizontal-alignment: center; }
-                            Text { text: Math.round(night_bad_layers_k[row_idx] * 100) / 100; color: #ffffff; font-size: 8px; width: 25px; horizontal-alignment: center; }
-                            Text { text: Math.round(night_temp[row_idx] * 10) / 10; color: #ffffff; font-size: 8px; width: 30px; horizontal-alignment: center; }
+                            Text { text: night_hours[row_idx]; color: #ffffff; font-size: 8px; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                            Text { text: night_clouds_low[row_idx]; color: #ffffff; font-size: 8px; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                            Text { text: night_clouds_mid[row_idx]; color: #ffffff; font-size: 8px; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                            Text { text: night_clouds_high[row_idx]; color: #ffffff; font-size: 8px; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                            Text { text: Math.round(night_seeing[row_idx] * 100) / 100; color: #ffffff; font-size: 8px; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                            Text { text: night_index1[row_idx]; color: #ffffff; font-size: 8px; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                            Text { text: night_index2[row_idx]; color: #ffffff; font-size: 8px; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                            Text { text: Math.round(night_jetstream[row_idx] * 10) / 10; color: #ffffff; font-size: 8px; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                            Text { text: Math.round(night_bad_layers_bot[row_idx] * 100) / 100; color: #ffffff; font-size: 8px; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                            Text { text: Math.round(night_bad_layers_top[row_idx] * 100) / 100; color: #ffffff; font-size: 8px; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                            Text { text: Math.round(night_bad_layers_k[row_idx] * 100) / 100; color: #ffffff; font-size: 8px; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
+                            Text { text: Math.round(night_temp[row_idx] * 10) / 10; color: #ffffff; font-size: 8px; horizontal-stretch: 1; min-width: 26px; horizontal-alignment: center; }
                             Text { text: night_humidity[row_idx]; color: #ffffff; font-size: 8px; width: 35px; horizontal-alignment: center; }
                         }
                     }
@@ -1084,6 +1111,7 @@ export component MainWindow inherits Window {
     }
 
     if (show_env_canada): EnvironmentCanadaPage {
+        height: root.height - 28px;
         clouds_image: env_clouds_image;
         surface_wind_image: env_surface_wind_image;
         seeing_image: env_seeing_image;
@@ -1113,6 +1141,7 @@ export component MainWindow inherits Window {
     }
 
     if (show_nina): NinaPage {
+        height: root.height - 28px;
         image1: nina_image1;
         image2: nina_image2;
         image3: nina_image3;
@@ -1152,6 +1181,7 @@ export component MainWindow inherits Window {
     }
 
     if (show_sounding): SoundingPage {
+        height: root.height - 28px;
         sounding_image: sounding_image;
         loading: loading;
         error_message: error_message;
@@ -1160,6 +1190,7 @@ export component MainWindow inherits Window {
     }
 
     if (show_precipitation): PrecipitationPage {
+        height: root.height - 28px;
         // state bindings
         loading: loading;
         error_message: error_message;
@@ -1254,6 +1285,7 @@ export component MainWindow inherits Window {
     }
 
     if (show_aurora): AuroraPage {
+        height: root.height - 28px;
         aurora_forecast_image: aurora_forecast_image;
         ace_solar_wind_image: aurora_ace_solar_wind_image;
         dscovr_solar_wind_image: aurora_dscovr_solar_wind_image;
@@ -1286,6 +1318,35 @@ export component MainWindow inherits Window {
         all_sky_previous => { root.aurora_all_sky_previous(); }
         all_sky_next => { root.aurora_all_sky_next(); }
         refresh_aurora => { root.aurora_refresh(); }
+    }
+
+    // Persistent status bar - always visible, anchored to the bottom
+    Rectangle {
+        y: root.height - 28px;
+        height: 28px;
+        width: 100%;
+        z: 1600;
+        background: #141414;
+
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 14px;
+
+                Text { text: "Weather " + root.last_weather_update; color: #9aa0a6; font-size: 11px; }
+                Text { text: "Clouds " + root.last_cloud_cover_update; color: #9aa0a6; font-size: 11px; }
+                Text { text: "Wind " + root.last_wind_update; color: #9aa0a6; font-size: 11px; }
+                Text { text: "ENV " + root.last_env_canada_update; color: #9aa0a6; font-size: 11px; }
+
+                Rectangle { horizontal-stretch: 1; }
+
+                Button {
+                    text: root.auto_cycle_enabled ? "Auto-cycle: ON" : "Auto-cycle: OFF";
+                    width: 140px;
+                    height: 22px;
+                    clicked => { root.auto_cycle_enabled = !root.auto_cycle_enabled; }
+                }
+            }
     }
 
     // Coordinates error popup

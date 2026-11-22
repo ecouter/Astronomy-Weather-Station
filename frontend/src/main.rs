@@ -12,6 +12,11 @@ use slint::ComponentHandle;
 
 use crate::app::refresh::{spawn, start_periodic};
 
+/// Short local-time label for the status bar.
+fn timestamp() -> slint::SharedString {
+    chrono::Local::now().format("%H:%M").to_string().into()
+}
+
 fn main() -> Result<(), slint::PlatformError> {
     pretty_env_logger::init();
 
@@ -83,6 +88,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 Ok(data) => {
                     w.upgrade_in_event_loop(move |win| {
                         app::weather::set_weather_images(&win, data);
+                        win.set_last_weather_update(timestamp());
                         info!("Initial weather data loaded");
                     })
                     .ok();
@@ -99,6 +105,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 Ok(images) => {
                     w.upgrade_in_event_loop(move |win| {
                         app::cloud_cover::set_cloud_cover_images(&win, images);
+                        win.set_last_cloud_cover_update(timestamp());
                         info!("Initial cloud cover data loaded");
                     })
                     .ok();
@@ -115,6 +122,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 Ok((images, legend)) => {
                     w.upgrade_in_event_loop(move |win| {
                         app::wind::set_wind_images(&win, (images, legend));
+                        win.set_last_wind_update(timestamp());
                         info!("Initial wind data loaded");
                     })
                     .ok();
@@ -243,8 +251,11 @@ fn main() -> Result<(), slint::PlatformError> {
             async move {
                 match app::weather::fetch_weather_images(lat, lon).await {
                     Ok(data) => {
-                        w.upgrade_in_event_loop(move |win| app::weather::set_weather_images(&win, data))
-                            .ok();
+                        w.upgrade_in_event_loop(move |win| {
+                            app::weather::set_weather_images(&win, data);
+                            win.set_last_weather_update(timestamp());
+                        })
+                        .ok();
                     }
                     Err(e) => {
                         error!("Failed to update weather images: {}", e);
@@ -272,6 +283,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         w_cloud
                             .upgrade_in_event_loop(move |win| {
                                 app::cloud_cover::set_cloud_cover_images(&win, images);
+                                win.set_last_cloud_cover_update(timestamp());
                                 info!("Updated cloud cover images");
                             })
                             .ok();
@@ -363,6 +375,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     Ok((images, legend)) => {
                         w.upgrade_in_event_loop(move |win| {
                             app::wind::set_wind_images(&win, (images, legend));
+                            win.set_last_wind_update(timestamp());
                             info!("Updated wind images");
                         })
                         .ok();

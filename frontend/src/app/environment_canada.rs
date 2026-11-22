@@ -733,6 +733,9 @@ pub async fn update_environment_canada_images(main_window: slint::Weak<MainWindo
 
             let model_run_info = ENV_CANADA_MODEL_RUN_INFO.lock().unwrap();
             win.set_env_model_run_info(model_run_info.clone().into());
+            win.set_last_env_canada_update(
+                chrono::Local::now().format("%H:%M").to_string().into(),
+            );
         })
         .ok();
 
